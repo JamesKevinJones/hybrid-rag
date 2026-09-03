@@ -1,0 +1,23 @@
+# Generated at runtime: vector index, ledgers, datasets, downloaded rerank models.
+data/
+!data/corpus/.gitkeep
+
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest-tmp/
+.mypy_cache/
+.ruff_cache/
+
+.env
+*.jsonl
+
+# Training artifacts
+adapters/
+outputs/
+wandb/
+
+# Colab/HF training artifacts
+gguf_out/
+adapter_out/

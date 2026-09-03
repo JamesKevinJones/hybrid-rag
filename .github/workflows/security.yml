@@ -1,0 +1,35 @@
+name: Security Review
+
+# Runs on every PR. This is a BACKSTOP, not the gate that matters — it fires
+# after code is already pushed and a PR exists. The actual pre-push check is
+# the local /security-review slash command (see commands/security-review.md),
+# which Claude Code runs against the pending diff before a push happens at
+# all. This workflow catches anything pushed by a path that skipped that step
+# (a manual push, a different tool, a teammate).
+
+permissions:
+  pull-requests: write # needed to post findings as PR comments
+  contents: read
+
+on:
+  pull_request:
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      - uses: anthropics/claude-code-security-review@main
+        with:
+          comment-pr: true
+          claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
+          # Pinned explicitly. Left blank, this action's own default falls
+          # back to a dated 2025 snapshot (claude-opus-4-1-20250805) rather
+          # than picking up whatever is current — pin to the model you
+          # actually want reviewing your diffs, and revisit this when a
+          # newer one ships.
+          claude-model: claude-opus-5

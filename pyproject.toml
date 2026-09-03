@@ -1,0 +1,139 @@
+[build-system]
+requires = ["hatchling>=1.25,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hybrid-rag"
+version = "0.1.0"
+description = "Local-first tiered multi-agent RAG with MCP governance and an Opus-5 distillation pipeline"
+readme = "README.md"
+license = { text = "MIT" }
+# Pinned below 3.13: torch / bitsandbytes / unsloth wheels lag new CPython minors,
+# and the training extra is the constraint. The system interpreter here is 3.14.6,
+# so `uv sync` will fetch and manage a private 3.12 toolchain.
+requires-python = ">=3.12,<3.13"
+
+dependencies = [
+  # Typed config + deterministic dependency injection
+  "pydantic>=2.9,<3",
+  "pydantic-settings>=2.5,<3",
+  # Transport
+  "httpx>=0.27,<0.29",
+  "tenacity>=9.0,<10",
+  # Structured audit logging / fast JSONL
+  "structlog>=24.4,<26",
+  "orjson>=3.10,<4",
+  # Vector math for confidence calibration and semantic chunking
+  "numpy>=1.26,<3",
+  # Default local vector index (embedded, on-disk, no server process)
+  "qdrant-client>=1.11,<2",
+  # MCP server. Standalone FastMCP 2.x rather than the FastMCP 1.0 vendored in
+  # the official `mcp` SDK: server composition, proxying and auth are all in 2.x
+  # and Module 3's cloud-agent bridge needs them. Resolves the open decision
+  # recorded in docs/SPEC-DELTA.md.
+  # Local cross-encoder re-ranking. CPU-only ONNX, ~50 MB model, no GPU
+  # contention with Ollama. NOT optional despite the size: measured against a
+  # real corpus, bi-encoder cosine alone separates a genuine question from
+  # gibberish by 0.03, which is noise. The cross-encoder makes that 0.7 versus
+  # 0.004. Without it the escalation threshold has nothing to threshold on.
+  "flashrank>=0.2.9,<0.3",
+  # CLI surface
+  "typer>=0.12,<1",
+  "rich>=13.7,<15",
+  "fastmcp>=2.0,<3",
+]
+
+[project.optional-dependencies]
+# Level 2 oracle. Only needed on the machine that talks to Anthropic.
+cloud = [
+  "anthropic>=0.40,<1",
+]
+# Alternate vector backend behind the same VectorStore protocol.
+chroma = [
+  "chromadb>=0.5.5,<2",
+]
+# PII detection + guardrails (Module 2). Pulls spacy; install deliberately.
+governance = [
+  "presidio-analyzer>=2.2.355,<3",
+  "presidio-anonymizer>=2.2.355,<3",
+  "spacy>=3.7,<4",
+]
+# OpenTelemetry export of the audit ledger.
+otel = [
+  "opentelemetry-sdk>=1.27,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.27,<2",
+]
+# NOTE: there is deliberately no `train` extra any more. QLoRA on this host
+# needs more than the ~5.2 GB of usable VRAM left after DWM, so training was
+# moved off-machine entirely - see scripts/train_colab.py and decision 14.
+# Distilled-vs-parent benchmarking.
+eval = [
+  "ragas>=0.1.20,<0.4",
+  "datasets>=2.21,<4",
+]
+dev = [
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.24,<2",
+  "respx>=0.21,<0.23",
+  "ruff>=0.6,<1",
+  "mypy>=1.11,<2",
+  "types-requests>=2.32,<3",
+]
+
+[project.scripts]
+hybrid-rag = "hybrid_rag.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hybrid_rag"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ANN", "RUF"]
+ignore = ["ANN401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+mypy_path = "src"
+packages = ["hybrid_rag"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = [
+  "flashrank.*",
+  "qdrant_client.*",
+  "chromadb.*",
+  "unsloth.*",
+  "ragas.*",
+  "presidio_analyzer.*",
+  "presidio_anonymizer.*",
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+# --basetemp keeps tmp_path inside the repo. pytest's default lives under
+# %TEMP%\pytest-of-<user>, where its atexit cleanup tries to stat a
+# "pytest-current" symlink that unprivileged Windows cannot resolve - the
+# run passes and then prints a PermissionError traceback that looks like a
+# failure. Local basetemp sidesteps the symlink entirely.
+addopts = "-q --strict-markers --basetemp=.pytest-tmp"
+filterwarnings = [
+  # fastmcp -> authlib. Not ours, not actionable, and it drowns real output.
+  "ignore::DeprecationWarning:authlib.*",
+  "ignore:.*authlib.*:DeprecationWarning",
+  "ignore:.*httpx module is deprecated.*",
+]
+markers = [
+  "requires_ollama: needs a live Ollama daemon on OLLAMA_BASE_URL",
+  "requires_anthropic: burns real Claude tokens",
+]

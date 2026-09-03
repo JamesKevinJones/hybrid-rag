@@ -1,0 +1,56 @@
+# WSL2 resource caps for the hybrid-rag host.
+#
+# INSTALL: copy to C:\Users\kj638\.wslconfig (note the leading dot, no
+# extension), then `wsl --shutdown` and restart your distro. Windows reads this
+# file once at VM boot.
+#
+#   Copy-Item scripts\wslconfig.template $env:USERPROFILE\.wslconfig
+#   wsl --shutdown
+#
+# WHY: by default WSL2 claims up to 50% of host RAM and grows a dynamic swap
+# file with no ceiling. On a 16 GB single-channel machine that means WSL can
+# take 8 GB while Ollama is holding a 3B model resident and Windows still needs
+# its own working set. The result is not a clean out-of-memory error - it is
+# the compressor and the pagefile thrashing a memory bus that only has ~22 GB/s
+# to give, and the whole desktop stops responding for tens of seconds at a time.
+#
+# 6 GB leaves roughly 10 GB for Windows, Ollama's host-side buffers and the RAG
+# process. Swap is capped rather than disabled so a spike fails slowly instead
+# of getting the Linux OOM killer involved.
+
+[wsl2]
+memory=6GB
+swap=4GB
+processors=4
+
+# Reclaim freed pages back to Windows instead of holding them in the VM.
+# "gradual" is the safe default; "dropcache" reclaims harder but adds latency
+# spikes inside WSL.
+autoMemoryReclaim=gradual
+
+# Sparse VHD keeps the ext4 virtual disk from ratcheting up in size forever.
+sparseVhd=true
+
+# Localhost forwarding so an MCP server or a database inside WSL is reachable
+# from Windows on 127.0.0.1 without any port plumbing.
+localhostForwarding=true
+
+# Page reporting must stay on for autoMemoryReclaim to do anything.
+pageReporting=true
+
+[experimental]
+# Reclaim the WSL VM's cached memory after 5 minutes idle. Without this, a
+# build that briefly touched 5 GB keeps holding it long after it finished.
+autoMemoryReclaim=gradual
+networkingMode=mirrored
+dnsTunneling=true
+
+# ---------------------------------------------------------------------------
+# CAUTION: this is a machine-wide setting, not a project one.
+#
+# Docker running natively inside WSL shares this same 6 GB ceiling with
+# everything else in the distro. If containers start getting OOM-killed after
+# applying this, that is why - raise `memory` rather than removing the cap,
+# because an uncapped WSL2 on this host is what causes the desktop freezes in
+# the first place.
+# ---------------------------------------------------------------------------
