@@ -12,17 +12,29 @@ permissions:
   contents: read
 
 on:
+  # pull_request ONLY, and this is not an oversight - it is a property of the
+  # action. anthropics/claude-code-security-review internally skips any event
+  # that is not a pull request ("ClaudeCode only runs on pull requests,
+  # skipping"), so adding `push:` here does NOT make it review anything. It
+  # produces a green Security Review check that scanned nothing, which is
+  # strictly worse than a check that never ran: the first looks like coverage.
+  #
+  # That was tried, observed in run 33978641239, and reverted. Do not re-add it.
+  #
+  # The consequence is real and belongs in the open: work pushed straight to
+  # main is covered by the local /security-review command and nothing else. To
+  # get CI coverage, open a PR.
   pull_request:
-  # Also on direct pushes to main. Without this the backstop never fires on a
-  # solo repo where work lands straight on main - which is exactly the path it
-  # was meant to catch. Two commits shipped before anyone noticed it had never
-  # run once. Restricted to main so feature-branch pushes do not double-review
-  # what the PR trigger will review anyway.
+
+  # A no-cost annotation so the gap is visible in the Actions tab rather than
+  # inferred from an empty run list. Makes no API call and cannot fail the push.
   push:
     branches: [main]
 
 jobs:
+  # Fires only on pull_request; see the trigger comment above.
   security:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,9 +44,7 @@ jobs:
 
       - uses: anthropics/claude-code-security-review@main
         with:
-          # There is no PR to comment on during a push event; the findings
-          # land in the job log instead.
-          comment-pr: ${{ github.event_name == 'pull_request' }}
+          comment-pr: true
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
           # Pinned explicitly. Left blank, this action's own default falls
           # back to a dated 2025 snapshot (claude-opus-4-1-20250805) rather
@@ -42,3 +52,12 @@ jobs:
           # actually want reviewing your diffs, and revisit this when a
           # newer one ships.
           claude-model: claude-opus-5
+
+  # Not a gate. A visible note that this commit bypassed the CI review, so an
+  # empty Actions history is never mistaken for a clean one.
+  note-unreviewed:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "::warning title=Not security-reviewed by CI::Commit ${GITHUB_SHA::7}           landed directly on main. anthropics/claude-code-security-review only runs on           pull_request events, so CI reviewed nothing here. Coverage for this commit is           whatever the local /security-review command found before the push."

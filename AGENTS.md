@@ -82,11 +82,14 @@ scripts/
    client is what evicts it - do it deliberately or not at all.
 7. `relevance_floor` is a property of the cross-encoder. Re-measure it whenever
    `rerank_model` changes; a stale floor silently breaks routing.
-8. A budget or governance veto makes ZERO cloud calls. Not cancelled, not
+8. CI security review only runs on pull_request - the action skips every other
+   event. Work pushed straight to main is covered by the local
+   /security-review command and nothing else. Open a PR to get CI coverage.
+9. A budget or governance veto makes ZERO cloud calls. Not cancelled, not
    discarded - the frontier client is never touched. There is a test for it.
-9. Restored PII goes to the user only. Never into the ledger, never into the
+10. Restored PII goes to the user only. Never into the ledger, never into the
    training set. `ScrubResult.reverse_map` is excluded from serialization.
-10. Run everything in `docs/VERIFY.md` before reporting work done.
+11. Run everything in `docs/VERIFY.md` before reporting work done.
 
 ## Working with the token budget
 
