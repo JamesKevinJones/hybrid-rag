@@ -127,3 +127,44 @@ def test_the_budget_defaults_are_the_agreed_under_estimates() -> None:
     assert budget.max_messages_per_window == 25
     assert budget.max_tokens_per_window == 400_000
     assert budget.weekly_message_cap == 250
+
+
+# ------------------------------------------------- generator profile resolution
+
+
+def test_the_default_profile_is_the_general_model() -> None:
+    from hybrid_rag.config import OllamaSettings
+
+    assert OllamaSettings().generator_model == "llama3.2:3b-instruct-q4_K_M"
+
+
+def test_the_code_profile_selects_the_coder_model() -> None:
+    from hybrid_rag.config import OllamaSettings
+
+    assert OllamaSettings(generator_profile="code").generator_model == "qwen2.5-coder:3b"
+
+
+def test_an_explicit_override_beats_the_profile() -> None:
+    from hybrid_rag.config import OllamaSettings
+
+    settings = OllamaSettings(generator_profile="code", generator_model_override="mine:latest")
+    assert settings.generator_model == "mine:latest"
+
+
+def test_an_unknown_profile_fails_loudly_and_lists_the_real_ones() -> None:
+    """A silent fallback here would load the wrong model and look like it worked."""
+    from hybrid_rag.config import OllamaSettings
+
+    with pytest.raises(ValueError, match="unknown generator_profile"):
+        _ = OllamaSettings(generator_profile="typo").generator_model
+
+
+def test_every_profile_stays_inside_the_measured_vram_envelope() -> None:
+    """4.1 GB measured with a 3B Q4 generator. A 7B entry would break it."""
+    from hybrid_rag.config import OllamaSettings
+
+    for name, model in OllamaSettings().generator_profiles.items():
+        assert ":3b" in model or "3b" in model.lower(), (
+            f"profile {name!r} points at {model!r}; the co-residency envelope was "
+            "measured against a ~3B Q4 model"
+        )

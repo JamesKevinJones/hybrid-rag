@@ -49,8 +49,21 @@ class OllamaSettings(BaseModel):
     """
 
     base_url: str = "http://localhost:11434"
-    # The single resident model. Tier 3 routing and generation share it.
-    generator_model: str = "llama3.2:3b-instruct-q4_K_M"
+
+    # Generator profiles. One resident generator at a time, chosen by name, so
+    # switching workloads is a config change rather than an edit. Every entry
+    # here must be a ~3B Q4 model: that is the size the VRAM envelope below was
+    # measured against, and a 7B would push the co-resident set past it.
+    generator_profiles: dict[str, str] = Field(
+        default_factory=lambda: {
+            "general": "llama3.2:3b-instruct-q4_K_M",
+            "code": "qwen2.5-coder:3b",
+        }
+    )
+    generator_profile: str = "general"
+    # Explicit override. Set this and the profile is ignored; leave it None and
+    # `generator_model` resolves from the profile table.
+    generator_model_override: str | None = None
     embed_model: str = "all-minilm:l6-v2"
     embed_dim: int = 384
     # 4096 tokens of KV cache on a 3B Q4 is roughly 0.4 GB. Raising this is the
@@ -77,6 +90,33 @@ class OllamaSettings(BaseModel):
     # harmful content, not prompt injection. Set false if the model is not
     # pulled; it also fails open on its own if the model is missing.
     guard_enabled: bool = True
+
+    @property
+    def generator_model(self) -> str:
+        """The resident generator. Override wins, else the profile table.
+
+        Measured co-residency envelope on this 6 GB card, all at 100% GPU:
+
+            generator (3B Q4)         2.6 GB
+            llama-guard3:1b           1.5 GB
+            all-minilm:l6-v2          0.03 GB
+                                      -------
+                                      4.1 GB   inside ~5.2 GB usable
+
+        `num_ctx` and `keep_alive` are what hold that envelope: 4096 tokens of
+        KV cache on a 3B Q4 is roughly 0.4 GB, and raising it is the fastest
+        way to push the set into shared system memory and lose an order of
+        magnitude on a single-channel bus.
+        """
+        if self.generator_model_override:
+            return self.generator_model_override
+        try:
+            return self.generator_profiles[self.generator_profile]
+        except KeyError as exc:
+            known = ", ".join(sorted(self.generator_profiles))
+            raise ValueError(
+                f"unknown generator_profile {self.generator_profile!r}; known: {known}"
+            ) from exc
 
 
 class RuntimeSettings(BaseModel):
