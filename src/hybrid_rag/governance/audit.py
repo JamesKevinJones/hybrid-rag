@@ -188,7 +188,14 @@ class JsonlAuditSink:
         return None
 
     def verify_chain(self) -> tuple[bool, int]:
-        """Re-walk the ledger. Returns (intact, first_bad_line_number)."""
+        """Re-walk the ledger. Returns (intact, first_bad_line_number).
+
+        Never raises. A half-written row from a crash mid-fsync, or a line
+        replaced with garbage, is exactly the damage this exists to find - so
+        it is reported as a break at that line rather than thrown at the caller.
+        `verify-ledger` and the MCP tool both call this; neither should have to
+        wrap it in a try block to answer "is my audit trail sound?".
+        """
         prev = _GENESIS
         if not self._path.exists():
             return True, 0
@@ -196,7 +203,12 @@ class JsonlAuditSink:
             for n, line in enumerate(fh, start=1):
                 if not line.strip():
                     continue
-                row = orjson.loads(line)
+                try:
+                    row = orjson.loads(line)
+                except orjson.JSONDecodeError:
+                    return False, n
+                if not isinstance(row, dict):
+                    return False, n
                 claimed = row.pop("record_hash", None)
                 if row.get("prev_hash") != prev:
                     return False, n

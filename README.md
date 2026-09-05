@@ -126,6 +126,16 @@ uv run python -m hybrid_rag.mcp_servers.server --http  # port 8765
 
 Three tools, all local, none able to spend cloud quota: `local_rag_search`, `check_budget_status`, `verify_audit_ledger`.
 
+### The full pipeline
+
+```bash
+uv run hybrid-rag ask "How does the budget veto work?"
+uv run hybrid-rag evaluate                        # scores local vs the recorded Opus baseline
+uv run hybrid-rag promote ./gguf_out --name v1    # dry run unless --apply
+```
+
+`ask` is the only command that can spend cloud tokens, and only if the gate escalates *and* a key is configured *and* the budget has room. With no key it degrades to local and reports `cloud 0+0`.
+
 ---
 
 ## Layout
@@ -145,13 +155,19 @@ src/hybrid_rag/
 │   ├── guardrails.py    Module 2b - direction-scoped injection defence
 │   └── middleware.py    Module 2c - the sealed envelope
 ├── mcp_servers/         Module 3 - FastMCP tool server
-└── distill/             Module 4a - dataset curation (training is remote)
+├── distill/             Module 4a - dataset curation (training is remote)
+├── agents/
+│   └── orchestrator.py  Module 5a - the live execution path, both tiers
+└── eval/
+    ├── eval_harness.py  Module 5b - local metrics, replayed baseline, no judge
+    └── promotion_gate.py Module 5c - 3 criteria, opt-in alias update
 scripts/
 ├── train_colab.py       Module 4b - Unsloth QLoRA on a free T4, GGUF export
-└── wslconfig.template   WSL2 memory caps so the host stops thrashing
+├── wslconfig.template   WSL2 memory caps so the host stops thrashing
+└── install-wslconfig.ps1
 ```
 
-**Status:** Modules 1 to 4a are built, tested and running against live models. Module 4b (Colab training) is written and unrun. Module 5 (Ragas / G-Eval benchmarking against the Opus baseline) is not started.
+**Status:** Modules 1 through 5 are built, tested and running against live local models. 236 tests, mypy strict clean. Module 4b (Colab training) is written and unrun, and **no component has ever called Claude** - the Level 2 client is live code with a stubbed test double, and the system currently degrades to local because no key is configured. That degradation is the interesting part: it costs zero tokens and says so.
 
 ---
 

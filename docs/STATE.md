@@ -4,75 +4,77 @@ _Updated 2026-09-03._
 
 ## Where we stopped
 
-Modules 1 through 4a are built and running against live local models. Module 3
-(MCP) and Module 4b (Colab training) are new this session. 116 tests pass;
-ruff and mypy strict are clean.
+**Level 2 is no longer stubbed.** Modules 1 through 5 are built, typed, linted
+and running. 236 tests pass; ruff and mypy strict are clean.
 
-## What changed this session: the hardware refactor
+Shipped this session:
 
-Everything below traces to two numbers - ~5.2 GB usable VRAM and ~22 GB/s of
-single-channel memory bandwidth.
+- `llm/opus_client.py` - live Anthropic client behind a `FrontierClient`
+  Protocol, plus `UnavailableFrontierClient` as an explicit null object so the
+  degradation path is the same code in development as in production.
+- `agents/orchestrator.py` - Module 5a. Ingress governance, retrieval on
+  redacted text, per-chunk context screening, the routing gate, both execution
+  tiers, egress screening of the *response*, distillation harvest, and one
+  audit record on every branch including the ones that spent nothing.
+- `eval/eval_harness.py` - Module 5b. Groundedness via local embeddings plus
+  lexical overlap, instruction precision including negative constraints and
+  format tags, and cost per *passed* case. No LLM-as-a-judge anywhere.
+- `eval/promotion_gate.py` - Module 5c. GGUF intake, three criteria, and an
+  alias update that requires an explicit `apply=True`.
+- `scripts/install-wslconfig.ps1` - one-line installer, still not run.
+- CLI: `ask`, `evaluate`, `promote`.
+- Tests: orchestrator (16), eval harness (30), promotion gate (17), PII edge
+  cases (29), audit chain corruption (19), MCP serialization (8 more).
 
-- **Deleted the 1.5B router.** Two models do not co-reside in 5.2 GB, so Ollama
-  evicted one per query: a 2-4 second PCIe reload that cost more than every
-  other pipeline stage combined. Tier 3 now asks the resident 3B for a single
-  token. `keep_alive: -1` on every request pins it, asserted at the wire level.
-- **Three-tier waterfall** with explicit `@opus` / `@local` tags at tier 1a.
-- **Embeddings moved to `all-minilm:l6-v2`** - 384 dimensions instead of nomic's
-  768, halving the resident index. The collection name encodes the dimension so
-  a model change fails loudly instead of returning confident nonsense.
-- **Reranker moved to `ms-marco-TinyBERT-L-2-v2`** - 21 ms p50 versus 552 ms for
-  MiniLM-L-12. 26x, and the reason to switch turned out to be latency rather
-  than the RAM it was requested for.
-- **`relevance_floor` is now config**, set to 0.05 from measured TinyBERT score
-  distributions. This is the trap: the floor is a property of the cross-encoder,
-  and the old 0.5 made real questions score 0.000 after the swap.
-- **`max_workers: 2`** as semaphores in both the Ollama client and the RAG
-  engine, with a leak test.
-- **Module 3**: `mcp_servers/server.py` on FastMCP 2.x. Three tools, none able
-  to spend cloud quota. Retrieved passages are screened as `Direction.CONTEXT`
-  and returned `quarantined` rather than dropped.
-- **Module 4a**: `distill/dataset_formatter.py`. Local curation with egress
-  screening; credentials drop the sample rather than being redacted.
-- **Module 4b**: `scripts/train_colab.py`. Standalone, T4, Unsloth QLoRA, GGUF
-  export straight back into `ollama create`.
-- **`scripts/wslconfig.template`** - written, deliberately NOT installed.
+## Verified live
 
-## Bugs found by running it
+```
+hybrid-rag ask "How does the budget veto work?"
+  -> local, confidence 0.987, tier1_heuristic, cloud 0+0 tokens
 
-1. `top=0.002, margin=0.871` - a margin between two near-zero scores is
-   numerically huge and semantically empty, and a junk query rode it to 0.35
-   confidence. Margin now only counts above the relevance floor.
-2. A missing Qdrant collection raised a raw `ValueError` out of an MCP tool
-   call. An index that was never built is an empty index, not an error.
+hybrid-rag ask "Compare every distillation curriculum against full fine-tuning"
+  -> local_degraded, confidence 0.001, tier2_retrieval_confidence,
+     "Level 2 unavailable (no credentials)", cloud 0+0 tokens
+```
+
+Cold first call was 51.9 s - that is the one-time model load into VRAM. Warm
+calls land around 4.5 s for ~1100 tokens on the 3B, which is `keep_alive: -1`
+doing its job.
+
+## Bugs found by writing the tests
+
+1. **Placeholder collision in the PII scrubber.** Scrubbing text that already
+   contained `<EMAIL_ADDRESS_1>` minted a second `<EMAIL_ADDRESS_1>`, and
+   `restore()` then injected an address where the original had none. This
+   system hands its own scrubbed output back to users and MCP callers, so its
+   output is a realistic input. Counters now seed above any existing index.
+2. **`verify_chain` raised on a corrupt ledger.** A half-written row threw
+   `orjson.JSONDecodeError` out of the MCP tool whose entire job is answering
+   "is my audit trail sound?". A break is now reported as `(False, line)`.
 
 ## Exact next step
 
-Module 5 - the evaluation harness (`src/hybrid_rag/distill/eval_harness.py`):
+The system is complete end to end but has **never called Claude**. To close that:
 
-1. Ragas or G-Eval scoring of the local pipeline against recorded Opus
-   completions from the ledger.
-2. A promotion gate: the distilled model replaces the base only if the score
-   gap is under a configured delta. Without this, `train_colab.py` produces an
-   adapter nobody can justify deploying.
-3. A labelled query set. The routing thresholds are calibrated against one
-   214-chunk corpus of this project's own docs - enough to prove the signal
-   exists, not enough to claim any routing-percentage target.
-
-Then Module 4c: the Opus client and cloud-agent bridge (`llm/opus_client.py`,
-`agents/cloud_bridge.py`), which is the only remaining piece that actually
-spends tokens.
+1. `setx ANTHROPIC_API_KEY ...` in a terminal, or set
+   `HYBRID_RAG_ANTHROPIC__API_KEY`. Never paste it into a chat session.
+2. `uv run hybrid-rag ask "<a genuinely hard question>"` and confirm the ledger
+   shows `tier: opus` with real token counts.
+3. Repeat until `data/datasets/distillation_train.jsonl` has a few hundred
+   curated samples, then upload it plus `scripts/train_colab.py` to Colab.
+4. Build `data/datasets/eval_cases.jsonl` and `opus_baseline.jsonl` from the
+   harvested traces so `evaluate` and `promote` have something to score.
 
 ## Known gaps
 
-- **No component has ever called Claude.** The Level 2 path is fully specified,
-  budgeted, governed and tested at its boundary - and stubbed. Nothing in this
-  repo has spent a single cloud token.
-- `train_colab.py` has never been run. It is syntax-checked, not executed.
-- `llama-guard3:1b` is pulled but not chained in by default: loading it evicts
-  the generator, which is exactly what decision 14 was about.
-- The Presidio detector is written but untested against a live spaCy model.
-- `scripts/wslconfig.template` is not installed. It caps WSL2 at 6 GB, which is
-  shared with Docker-in-WSL on this host - applying it without checking
-  container memory first will OOM-kill them.
-- Budget limits in `BudgetSettings` are still placeholders.
+- **Zero cloud tokens have ever been spent.** Every Level 2 test uses a stub.
+  The live client is written and typed but unexercised against the real API.
+- `train_colab.py` has never been run.
+- The eval and promotion suites have no real case set yet - both are proven by
+  unit tests, neither has scored a real model.
+- `scripts/install-wslconfig.ps1` is not run. It caps WSL2 at 6 GB, shared with
+  Docker-in-WSL on this host.
+- `llama-guard3:1b` is pulled but not chained in: loading it evicts the
+  generator, which is what decision 14 was about.
+- Budget limits in `BudgetSettings` are still placeholders. Set them from what
+  the Claude Pro account actually shows before the first live escalation.

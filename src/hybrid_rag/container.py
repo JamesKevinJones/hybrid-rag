@@ -12,12 +12,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 from types import TracebackType
 
+from hybrid_rag.agents.orchestrator import AgentOrchestrator
 from hybrid_rag.config import Settings, get_settings
+from hybrid_rag.distill.dataset_formatter import DatasetFormatter
+from hybrid_rag.eval.eval_harness import EvalHarness, GroundednessScorer
+from hybrid_rag.eval.promotion_gate import PromotionGate
 from hybrid_rag.governance.audit import AuditSink, JsonlAuditSink
 from hybrid_rag.governance.guardrails import GuardrailChain, RegexGuardrail
 from hybrid_rag.governance.middleware import GovernanceMiddleware
 from hybrid_rag.governance.pii import PIIScrubber
 from hybrid_rag.llm.ollama_client import OllamaClient
+from hybrid_rag.llm.opus_client import (
+    AnthropicOpusClient,
+    FrontierClient,
+    UnavailableFrontierClient,
+)
 from hybrid_rag.rag.local_rag import (
     FlashRankReranker,
     LocalRAGEngine,
@@ -42,6 +51,10 @@ class Container:
     rag: LocalRAGEngine
     budget: RollingWindowBudget
     gate: RoutingGate
+    frontier: FrontierClient
+    orchestrator: AgentOrchestrator
+    harness: EvalHarness
+    promotion: PromotionGate
 
     async def __aenter__(self) -> Container:
         return self
@@ -57,6 +70,7 @@ class Container:
     async def aclose(self) -> None:
         await self.rag.aclose()
         await self.ollama.aclose()
+        await self.frontier.aclose()
         self.audit.close()
 
 
@@ -108,6 +122,30 @@ def build_container(settings: Settings | None = None) -> Container:
         slm_model=settings.ollama.generator_model,
         slm_max_tokens=settings.ollama.router_max_tokens,
     )
+    # The null object rather than None: the degradation path is then the same
+    # code in development as in production, instead of a branch that only runs
+    # when something is misconfigured.
+    live = AnthropicOpusClient(settings.anthropic)
+    frontier: FrontierClient = (
+        live if live.available else UnavailableFrontierClient("no ANTHROPIC_API_KEY configured")
+    )
+    formatter = DatasetFormatter()
+    orchestrator = AgentOrchestrator(
+        settings=settings,
+        governance=governance,
+        rag=rag,
+        gate=gate,
+        local=ollama,
+        frontier=frontier,
+        audit=audit,
+        formatter=formatter,
+    )
+    harness = EvalHarness(
+        settings=settings.eval,
+        scorer=GroundednessScorer(ollama, settings.eval),
+    )
+    promotion = PromotionGate(settings=settings.promotion, harness=harness)
+
     return Container(
         settings=settings,
         audit=audit,
@@ -117,4 +155,8 @@ def build_container(settings: Settings | None = None) -> Container:
         rag=rag,
         budget=budget,
         gate=gate,
+        frontier=frontier,
+        orchestrator=orchestrator,
+        harness=harness,
+        promotion=promotion,
     )

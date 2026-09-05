@@ -122,6 +122,12 @@ _PATTERNS: tuple[tuple[str, str, float], ...] = (
     ("IBAN", r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b", 0.7),
 )
 
+# Placeholders already present in the input. This system hands scrubbed text
+# back to users and to MCP callers, so its own output is a realistic input, and
+# a naive counter would mint a placeholder that collides with a literal one -
+# after which `restore()` injects an address where the original had none.
+_EXISTING_PLACEHOLDER = re.compile(r"<([A-Z][A-Z0-9_]*)_(\d+)>")
+
 _COMPILED: tuple[tuple[str, re.Pattern[str], float], ...] = tuple(
     (name, re.compile(pattern), score) for name, pattern, score in _PATTERNS
 )
@@ -266,7 +272,12 @@ class PIIScrubber:
                 original_length=len(text), safe_text=text, status=PIIStatus.CLEAN
             )
 
+        # Seed each type's counter above any placeholder already in the text, so
+        # new placeholders can never collide with literal ones.
         counters: dict[str, int] = defaultdict(int)
+        for match in _EXISTING_PLACEHOLDER.finditer(text):
+            kind, index = match.group(1), int(match.group(2))
+            counters[kind] = max(counters[kind], index)
         reverse: dict[str, str] = {}
         pieces: list[str] = []
         cursor = 0

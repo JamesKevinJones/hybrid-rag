@@ -16,6 +16,8 @@ from rich.table import Table
 
 from hybrid_rag.config import get_settings
 from hybrid_rag.container import build_container
+from hybrid_rag.eval.eval_harness import LocalResponder, RecordedResponder, load_cases
+from hybrid_rag.eval.promotion_gate import GgufArtifact
 from hybrid_rag.governance.audit import JsonlAuditSink
 from hybrid_rag.governance.guardrails import Direction
 from hybrid_rag.routing.routing_gate import RetrievalSignal
@@ -158,6 +160,101 @@ def scan(
         table.add_row("safe text", scrubbed.safe_text[:300])
         console.print(table)
         if not envelope.cleared:
+            raise typer.Exit(2)
+
+    asyncio.run(_run())
+
+
+@app.command()
+def ask(
+    query: Annotated[str, typer.Argument(help="The question to answer.")],
+) -> None:
+    """Run the full Module 5 pipeline. May spend cloud tokens if the gate escalates."""
+
+    async def _run() -> None:
+        container = build_container()
+        async with container:
+            result = await container.orchestrator.execute(query)
+
+        table = Table(title="execution", show_header=False)
+        table.add_row("outcome", f"[bold]{result.outcome}[/]")
+        table.add_row("reason", result.reason)
+        table.add_row("retrieval confidence", f"{result.retrieval_confidence:.3f}")
+        table.add_row("routing stage", result.routing_stage or "-")
+        table.add_row("quarantined chunks", str(result.quarantined_chunks))
+        table.add_row(
+            "tokens",
+            f"local {result.local_tokens_in}+{result.local_tokens_out} | "
+            f"cloud {result.cloud_tokens_in}+{result.cloud_tokens_out}",
+        )
+        table.add_row("latency", f"{result.latency_ms:.0f} ms")
+        table.add_row("harvested", str(result.distilled))
+        console.print(table)
+        console.print(result.answer or "[dim](no answer emitted)[/]")
+
+    asyncio.run(_run())
+
+
+@app.command()
+def evaluate(
+    model: Annotated[
+        str | None, typer.Option(help="Candidate model. Defaults to the resident one.")
+    ] = None,
+) -> None:
+    """Score the local model against the recorded Opus baseline. Spends nothing."""
+
+    async def _run() -> None:
+        container = build_container()
+        settings = container.settings
+        cases = load_cases(settings.eval.cases_path)
+        if not cases:
+            console.print(f"[yellow]no eval cases at {settings.eval.cases_path}[/]")
+            raise typer.Exit(1)
+
+        async with container:
+            candidate = LocalResponder(
+                rag=container.rag, generator=container.ollama, model=model
+            )
+            report = await container.harness.run(candidate, cases)
+            baseline = RecordedResponder(settings.eval.baseline_path)
+            baseline_report = await container.harness.run(baseline, cases)
+
+        for r in (report, baseline_report):
+            console.print(r.summary())
+        report.save(settings.eval.reports_dir / f"{report.label}.json")
+
+    asyncio.run(_run())
+
+
+@app.command()
+def promote(
+    gguf_dir: Annotated[Path, typer.Argument(help="Directory holding the Colab GGUF.")],
+    name: Annotated[str, typer.Option(help="Name to register the candidate under.")],
+    apply: Annotated[
+        bool, typer.Option(help="Actually re-point the serving alias if eligible.")
+    ] = False,
+) -> None:
+    """Register a GGUF, evaluate it, and re-point the alias only if it qualifies."""
+
+    async def _run() -> None:
+        container = build_container()
+        settings = container.settings
+        cases = load_cases(settings.eval.cases_path)
+
+        async with container:
+            artifact = GgufArtifact.discover(gguf_dir)
+            await container.promotion.register_gguf(artifact, model_name=name)
+            verdict = await container.promotion.evaluate(
+                candidate=LocalResponder(
+                    rag=container.rag, generator=container.ollama, model=name, label=name
+                ),
+                baseline=RecordedResponder(settings.eval.baseline_path),
+                cases=cases,
+            )
+            verdict = await container.promotion.promote(verdict, model_name=name, apply=apply)
+
+        console.print(verdict.summary())
+        if not verdict.eligible:
             raise typer.Exit(2)
 
     asyncio.run(_run())

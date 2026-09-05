@@ -10,8 +10,8 @@ uv run mypy
 uv run pytest
 ```
 
-Expected: `All checks passed!`, `Success: no issues found in 21 source files`,
-`116 passed`.
+Expected: `All checks passed!`, `Success: no issues found in 26 source files`,
+`236 passed`.
 
 ## Wiring smoke test
 
@@ -103,3 +103,42 @@ uv run python -c "import asyncio; from hybrid_rag.container import build_contain
 
 The method: dump raw scores for a handful of known-good and known-junk queries,
 find the gap between them, put the floor in it.
+
+## Module 5 end to end
+
+```bash
+uv run hybrid-rag ask "How does the budget veto work?"
+```
+
+Expect `outcome: local`, confidence near 0.99, and `cloud 0+0` tokens. With no
+`ANTHROPIC_API_KEY` set, a low-confidence question instead gives
+`outcome: local_degraded` and the reason `Level 2 unavailable (no credentials)`
+- also with `cloud 0+0`. That zero is the assertion that matters: a request that
+cannot legally or affordably escalate must never touch the client.
+
+The first call after a reboot takes ~50 s while the model loads into VRAM.
+Subsequent calls run in seconds; if they do not, `keep_alive` has regressed and
+`tests/unit/test_ollama_client.py` should have caught it.
+
+## Evaluation and promotion
+
+```bash
+uv run hybrid-rag evaluate
+uv run hybrid-rag promote ./gguf_out --name hybrid-rag-cand-v1
+```
+
+Both need `data/datasets/eval_cases.jsonl`; `evaluate` also needs
+`opus_baseline.jsonl`. Neither spends cloud tokens - the baseline is replayed
+from recorded completions. `promote` is a **dry run** unless `--apply` is
+passed, so running it cannot change what your machine serves.
+
+## WSL memory caps
+
+```bash
+powershell -File scripts/install-wslconfig.ps1
+```
+
+Not run by any test or command. It is machine-wide and calls `wsl --shutdown`,
+which stops every distro and every container inside them. Read
+`scripts/wslconfig.template` first - the 6 GB ceiling is shared with
+Docker-in-WSL on this host.

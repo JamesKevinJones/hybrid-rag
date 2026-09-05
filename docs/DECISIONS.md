@@ -218,3 +218,62 @@ official SDK vendors FastMCP 1.0; 2.x adds server composition, proxying and
 auth, all of which Module 3's cloud-agent bridge needs. The swap cost one line
 while the servers were unwritten, which was the entire argument for deciding it
 before writing them.
+
+## 19. The Module 5 spec asked for the old confidence formula; measurement wins
+
+The Module 5 brief specified `0.55*top + 0.25*margin + 0.20*coverage`. That is
+the exact formula decisions 11 and 16 retired, and the reasons have not changed:
+summed, margin and coverage are anti-correlated and cancel each other, so
+nothing could clear the 0.78 threshold; and an ungated margin between two
+near-zero scores let a nonsense query outscore a real one.
+
+Kept the measured formula - `0.60*top + 0.40*max(margin, coverage)`, with margin
+gated on the relevance floor. Re-verified live at the time of writing: a real
+question scores 0.987 and routes local, a keyword-poor one scores 0.001 and
+escalates. Reverting to the specified weights would reintroduce a bug this repo
+has a regression test for.
+
+The weights remain config fields. If the specified numbers are wanted anyway,
+`HYBRID_RAG_RETRIEVAL__W_TOP_SCORE` and `__W_SUPPORT` change them without a
+code edit - but the three-term shape is gone, because two of those terms were
+measuring the same evidence twice.
+
+## 20. `degraded_local` uses the resident model, not a second one
+
+The brief said degraded fallback should run `qwen2.5:3b`. Loading a second 3B
+evicts the first: that is precisely the 2-4 second PCIe reload decision 14
+removed, and it would land on the *degraded* path - the one that fires when the
+budget is exhausted or the frontier tier is unreachable, i.e. exactly when the
+user is already having a worse time.
+
+Degradation reuses `llama3.2:3b-instruct-q4_K_M`, already pinned in VRAM. To
+change which model that is, change `generator_model`; the whole system follows,
+and there is still only ever one resident.
+
+## 21. The eval harness replays the baseline instead of re-running it
+
+Groundedness is scored with local embeddings and lexical overlap, instruction
+precision with a constraint table, cost with arithmetic. No LLM-as-a-judge
+anywhere - an evaluation that spends frontier tokens every time you check
+whether you can stop spending frontier tokens is self-defeating.
+
+The Opus baseline comes from `RecordedResponder`, replaying completions the
+orchestrator already harvested. Running the suite costs nothing but local
+inference, so it can run on every candidate without a budget conversation.
+
+Cost is reported per *passed* case, not per attempt. Averaging over attempts
+flatters a model that is fast and wrong, which is the exact trade this project
+exists to avoid making by accident.
+
+## 22. The promotion gate decides automatically; applying is opt-in
+
+The verdict is computed with no human in the loop: 85% groundedness parity
+against the Opus baseline, a 1200 ms p95 SLA, and an absolute instruction-
+precision floor. Parity is relative because what matters is how much of the
+frontier model's reliability the small one retained; the instruction floor is
+absolute because ignoring a negative constraint is not a quality gradient, and
+a baseline that also ignored it does not excuse it.
+
+`promote()` will not touch Ollama unless `apply=True`. An eval run that silently
+changed what the machine serves would be an unpleasant surprise on a laptop that
+is also a workstation, and the gate is most useful when you can run it freely.

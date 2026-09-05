@@ -199,6 +199,57 @@ class AnthropicSettings(BaseModel):
     request_timeout_s: float = 600.0
 
 
+class DistillSettings(BaseModel):
+    """Where Level 2 completions are harvested to."""
+
+    enabled: bool = True
+    dataset_path: Path = REPO_ROOT / "data" / "datasets" / "distillation_train.jsonl"
+    # Baked into every harvested sample so the distilled model learns the role
+    # it will actually be asked to play.
+    system_prompt: str = (
+        "You are a grounded technical assistant. Answer only from the provided "
+        "context. If the context does not contain the answer, say so plainly."
+    )
+
+
+class EvalSettings(BaseModel):
+    """Local evaluation. No paid LLM-as-a-judge anywhere in this pipeline.
+
+    Groundedness is scored by embedding each answer sentence and each context
+    chunk locally, then asking whether any chunk supports it. A cloud judge
+    would be more accurate and would also make the eval cost more than the
+    thing it evaluates - which on a Claude Pro budget is self-defeating.
+    """
+
+    cases_path: Path = REPO_ROOT / "data" / "datasets" / "eval_cases.jsonl"
+    baseline_path: Path = REPO_ROOT / "data" / "datasets" / "opus_baseline.jsonl"
+    reports_dir: Path = REPO_ROOT / "data" / "datasets" / "eval_reports"
+    # Cosine similarity between an answer sentence and a context chunk above
+    # which the sentence counts as supported. Measured on all-minilm:l6-v2.
+    support_similarity: float = 0.62
+    # Content-word overlap that also counts as support. Catches verbatim
+    # quotation, which embeddings score oddly when the sentence is very short.
+    support_overlap: float = 0.55
+    # Sentences shorter than this are boilerplate ("Sure.", "In summary:") and
+    # are excluded rather than counted as unsupported.
+    min_scored_sentence_chars: int = 25
+
+
+class PromotionSettings(BaseModel):
+    """The gate a fine-tuned candidate has to clear before it serves traffic."""
+
+    # Fraction of the Opus baseline's groundedness the candidate must reach.
+    min_groundedness_parity: float = 0.85
+    # Hard SLA. A model that is accurate and slow still fails.
+    max_latency_p95_ms: float = 1200.0
+    # Instruction-following may not regress at all; format and negative
+    # constraints are the difference between a usable answer and a broken one.
+    min_instruction_precision: float = 0.90
+    # The alias local callers point at. Promotion re-points this, nothing else.
+    serving_alias: str = "hybrid-rag-serving"
+    ollama_binary: str = "ollama"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="HYBRID_RAG_",
@@ -217,6 +268,9 @@ class Settings(BaseSettings):
     budget: BudgetSettings = Field(default_factory=BudgetSettings)
     audit: AuditSettings = Field(default_factory=AuditSettings)
     anthropic: AnthropicSettings = Field(default_factory=AnthropicSettings)
+    distill: DistillSettings = Field(default_factory=DistillSettings)
+    eval: EvalSettings = Field(default_factory=EvalSettings)
+    promotion: PromotionSettings = Field(default_factory=PromotionSettings)
 
     def ensure_dirs(self) -> None:
         for p in (
@@ -224,6 +278,8 @@ class Settings(BaseSettings):
             self.vector.persist_dir,
             self.audit.path.parent,
             self.budget.ledger_path.parent,
+            self.distill.dataset_path.parent,
+            self.eval.reports_dir,
         ):
             p.mkdir(parents=True, exist_ok=True)
 

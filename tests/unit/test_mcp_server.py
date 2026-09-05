@@ -7,6 +7,7 @@ the real ones.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
@@ -79,6 +80,12 @@ def wired(tmp_path, monkeypatch):
             rag=StubRag(texts, confidence),  # type: ignore[arg-type]
             budget=RollingWindowBudget(settings.budget),
             gate=None,  # type: ignore[arg-type]
+            # Module 5 is not exercised through MCP; these tools are Level 0 only
+            # and none of them can reach the frontier tier by construction.
+            frontier=None,  # type: ignore[arg-type]
+            orchestrator=None,  # type: ignore[arg-type]
+            harness=None,  # type: ignore[arg-type]
+            promotion=None,  # type: ignore[arg-type]
         )
         srv._container = container
         return container
@@ -161,3 +168,132 @@ async def test_top_k_is_bounded_by_the_schema(wired) -> None:
     async with Client(srv.mcp) as client:
         with pytest.raises(Exception, match=r"(?i)validation|less than or equal|20"):
             await client.call_tool("local_rag_search", {"query": "x", "top_k": 500})
+
+
+# --------------------------------------------------- tool serialization
+
+
+async def test_tool_schemas_expose_descriptions_and_bounds() -> None:
+    """An MCP client picks tools from these schemas. Bare types are unusable."""
+    async with Client(srv.mcp) as client:
+        tools = {t.name: t for t in await client.list_tools()}
+
+    search = tools["local_rag_search"]
+    assert search.description and "cloud tokens" in search.description
+    props = search.inputSchema["properties"]
+    assert props["top_k"]["maximum"] == 20
+    assert props["top_k"]["minimum"] == 1
+    assert search.inputSchema["required"] == ["query"]
+
+
+async def test_structured_content_round_trips_through_json(wired) -> None:
+    """Nothing in the payload may depend on Python-side objects surviving."""
+    wired(["A passage about budgets."], 0.91)
+    async with Client(srv.mcp) as client:
+        result = await client.call_tool("local_rag_search", {"query": "budget"})
+
+    data = result.structured_content or {}
+    assert json.loads(json.dumps(data)) == data, "payload must be pure JSON"
+    assert isinstance(data["confidence"], float)
+    assert isinstance(data["would_escalate"], bool)
+    assert isinstance(data["passages"], list)
+    assert set(data["passages"][0]) == {
+        "rank",
+        "score",
+        "doc_id",
+        "uri",
+        "text",
+        "quarantined",
+        "quarantine_rules",
+    }
+
+
+async def test_optional_fields_serialize_as_null_not_missing(wired, monkeypatch) -> None:
+    wired(["A passage."], 0.9)
+
+    async def _no_uri(query: str, *, top_k: int | None = None, **_: Any) -> RetrievalResult:
+        del top_k
+        return RetrievalResult(
+            query=query,
+            results=[
+                ScoredChunk(
+                    chunk=Chunk(chunk_id="c", doc_id="d", text="A passage.", ordinal=0),
+                    score=0.9,
+                    raw_score=0.9,
+                    rank=0,
+                )
+            ],
+            confidence=0.9,
+            top_score=0.9,
+            margin=0.1,
+            coverage=1.0,
+        )
+
+    monkeypatch.setattr(srv._container.rag, "query", _no_uri)
+    async with Client(srv.mcp) as client:
+        result = await client.call_tool("local_rag_search", {"query": "x"})
+
+    passage = (result.structured_content or {})["passages"][0]
+    assert "uri" in passage
+    assert passage["uri"] is None
+
+
+async def test_unicode_survives_the_transport(wired) -> None:
+    wired(["予算の台帳は 🎯 コールの前に予約します。"], 0.9)
+    async with Client(srv.mcp) as client:
+        result = await client.call_tool("local_rag_search", {"query": "budget"})
+
+    text = (result.structured_content or {})["passages"][0]["text"]
+    assert "予算" in text
+    assert "🎯" in text
+
+
+async def test_a_large_payload_serializes_intact(wired) -> None:
+    chunk = "The rolling window budget reserves capacity before each call. " * 400
+    wired([chunk] * 5, 0.9)
+    async with Client(srv.mcp) as client:
+        result = await client.call_tool("local_rag_search", {"query": "budget", "top_k": 5})
+
+    passages = (result.structured_content or {})["passages"]
+    assert len(passages) == 5
+    assert len(passages[0]["text"]) > 20_000
+
+
+async def test_numeric_fields_keep_their_types(wired) -> None:
+    container = wired([])
+    decision = container.budget.reserve(1234, trace_id="t")
+    container.budget.commit(decision.reservation_id or "", tokens_in=1000, tokens_out=234)
+
+    async with Client(srv.mcp) as client:
+        budget = (await client.call_tool("check_budget_status", {})).structured_content or {}
+        ledger = (await client.call_tool("verify_audit_ledger", {})).structured_content or {}
+
+    assert isinstance(budget["tokens_used"], int)
+    assert isinstance(budget["minutes_to_window_reset"], float)
+    assert isinstance(budget["exhausted"], bool)
+    assert isinstance(ledger["records"], int)
+    assert isinstance(ledger["intact"], bool)
+    assert isinstance(ledger["path"], str)
+
+
+async def test_a_corrupt_ledger_is_reported_not_raised(wired, tmp_path) -> None:
+    """The tool answers 'is my audit trail sound?' - it must not crash asking."""
+    wired([])
+    (tmp_path / "audit.jsonl").write_text("not json at all\n", encoding="utf-8")
+
+    async with Client(srv.mcp) as client:
+        data = (await client.call_tool("verify_audit_ledger", {})).structured_content or {}
+
+    assert data["intact"] is False
+    assert data["first_bad_line"] == 1
+    assert "cannot be trusted" in data["detail"]
+
+
+async def test_an_empty_result_set_serializes_cleanly(wired) -> None:
+    wired([], 0.0)
+    async with Client(srv.mcp) as client:
+        data = (await client.call_tool("local_rag_search", {"query": "x"})).structured_content or {}
+
+    assert data["passages"] == []
+    assert data["quarantined_count"] == 0
+    assert data["would_escalate"] is True

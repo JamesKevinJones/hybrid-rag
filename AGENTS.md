@@ -50,14 +50,20 @@ src/hybrid_rag/
     middleware.py    # Module 2c - GovernanceEnvelope, enforces invariant 1
   llm/
     ollama_client.py # Level 0 transport
+    opus_client.py   # Level 2 transport - the only file that can spend money
   mcp_servers/
     server.py        # Module 3 - FastMCP: search, budget, ledger tools
   distill/
     dataset_formatter.py  # Module 4a - curation. Training is remote, on purpose.
-  agents/            # not built yet
+  agents/
+    orchestrator.py  # Module 5a - the live execution path, both tiers
+  eval/
+    eval_harness.py  # Module 5b - local metrics, replayed baseline, no judge model
+    promotion_gate.py # Module 5c - GGUF intake, 3 criteria, opt-in alias update
 scripts/
   train_colab.py     # Module 4b - runs on Colab, imports nothing from this package
   wslconfig.template # WSL2 memory caps; NOT installed automatically
+  install-wslconfig.ps1 # one-liner; machine-wide, shared with Docker-in-WSL
 ```
 
 ## Rules
@@ -76,7 +82,11 @@ scripts/
    client is what evicts it - do it deliberately or not at all.
 7. `relevance_floor` is a property of the cross-encoder. Re-measure it whenever
    `rerank_model` changes; a stale floor silently breaks routing.
-8. Run everything in `docs/VERIFY.md` before reporting work done.
+8. A budget or governance veto makes ZERO cloud calls. Not cancelled, not
+   discarded - the frontier client is never touched. There is a test for it.
+9. Restored PII goes to the user only. Never into the ledger, never into the
+   training set. `ScrubResult.reverse_map` is excluded from serialization.
+10. Run everything in `docs/VERIFY.md` before reporting work done.
 
 ## Working with the token budget
 
