@@ -74,7 +74,8 @@ The system is complete end to end but has **never called Claude**. To close that
   unit tests, neither has scored a real model.
 - `scripts/install-wslconfig.ps1` is not run. It caps WSL2 at 6 GB, shared with
   Docker-in-WSL on this host.
-- `llama-guard3:1b` is pulled but not chained in: loading it evicts the
-  generator, which is what decision 14 was about.
+- `llama-guard3:1b` is now chained in by default (38 ms p50, co-resident).
+  It is a CONTENT-SAFETY layer and does not detect prompt injection - see
+  decision 24 for the measurement.
 - Budget limits in `BudgetSettings` are still placeholders. Set them from what
   the Claude Pro account actually shows before the first live escalation.

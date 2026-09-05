@@ -18,7 +18,12 @@ from hybrid_rag.distill.dataset_formatter import DatasetFormatter
 from hybrid_rag.eval.eval_harness import EvalHarness, GroundednessScorer
 from hybrid_rag.eval.promotion_gate import PromotionGate
 from hybrid_rag.governance.audit import AuditSink, JsonlAuditSink
-from hybrid_rag.governance.guardrails import GuardrailChain, RegexGuardrail
+from hybrid_rag.governance.guardrails import (
+    Guardrail,
+    GuardrailChain,
+    LlamaGuardGuardrail,
+    RegexGuardrail,
+)
 from hybrid_rag.governance.middleware import GovernanceMiddleware
 from hybrid_rag.governance.pii import PIIScrubber
 from hybrid_rag.llm.ollama_client import OllamaClient
@@ -93,13 +98,16 @@ def build_container(settings: Settings | None = None) -> Container:
 
     audit = JsonlAuditSink(settings.audit.path, schema_version=settings.audit.schema_version)
     ollama = OllamaClient(settings.ollama, runtime=settings.runtime)
-    # Llama-Guard is deliberately NOT chained in by default: the model is not
-    # pulled by `doctor`, and a guardrail that silently fails open on every
-    # request is worse than one that was never claimed. Add it explicitly once
-    # `ollama pull llama-guard3:1b` has run.
+    # Two ORTHOGONAL layers, not one behind the other. Regex catches prompt
+    # injection and secret exfiltration; Llama Guard catches harmful content.
+    # Measurement showed Llama Guard flags none of the former - see its
+    # docstring - so neither substitutes for the other.
+    layers: list[Guardrail] = [RegexGuardrail()]
+    if settings.ollama.guard_enabled:
+        layers.append(LlamaGuardGuardrail(ollama, model=settings.ollama.guard_model))
     governance = GovernanceMiddleware(
         scrubber=PIIScrubber(),
-        guardrail=GuardrailChain([RegexGuardrail()]),
+        guardrail=GuardrailChain(layers),
         audit=audit,
     )
     store = build_vector_store(settings.vector)

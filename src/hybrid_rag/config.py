@@ -33,12 +33,14 @@ class OllamaSettings(BaseModel):
     The hard number: 6 GB card minus roughly 0.8 GB held by the Windows desktop
     compositor. Whatever is left has to hold the weights AND the KV cache.
 
-    **One model, pinned.** An earlier build ran a 1.5B router alongside the 3B
-    generator. Ollama evicts to fit, so every query that touched both paid a
-    2-4 second cold load over PCIe - on a single-channel bus that reload is the
-    dominant cost of the whole request, dwarfing the inference it enables. The
-    router is gone; tier 3 of the waterfall asks the generator that is already
-    resident. `keep_alive: -1` pins it so nothing evicts it between queries.
+    **One generator, pinned.** An earlier build ran a separate 1.5B router.
+    Tier 3 now asks the resident generator instead: a one-token vote is less
+    inference than a JSON vote, and it removes a model and a config field.
+
+    Note that the original reason given for this - that the two models could
+    not co-reside - was never measured and is wrong. Three models totalling
+    4.1 GB sit at 100% GPU on this card. See decision 23. `keep_alive: -1`
+    still matters: it prevents idle-timeout unloads, which are real.
 
     Embeddings run on a 45 MB MiniLM rather than the 274 MB nomic model: 384
     dimensions instead of 768 halves the index in RAM, and at this corpus size
@@ -54,7 +56,7 @@ class OllamaSettings(BaseModel):
     # fastest way to push the model into shared system memory and lose 10x.
     num_ctx: int = 4096
     # -1 pins the model in VRAM indefinitely. This is the single most important
-    # latency setting in the file; a duration string here reintroduces eviction.
+    # latency setting in the file; a duration string reintroduces idle unloads.
     keep_alive: int | str = -1
     request_timeout_s: float = 120.0
     # Pinned for reproducibility. The audit ledger records this alongside the
@@ -65,9 +67,15 @@ class OllamaSettings(BaseModel):
     # Tier 3 emits exactly one token: "L" or "O". Anything longer is the model
     # explaining itself, which costs latency and buys nothing.
     router_max_tokens: int = 1
-    # Optional second guardrail layer. Loading it evicts the generator on this
-    # hardware, so it is off unless explicitly wired in container.py.
+    # Content-safety classifier. Measured on this host: co-resides with the
+    # generator and embedder at 100% GPU (2.6 + 1.5 + 0.03 GB inside ~5.2 GB)
+    # and costs 38 ms p50. An earlier comment claimed it evicts the generator;
+    # that was inferred rather than measured, and decision 23 disproves it.
     guard_model: str = "llama-guard3:1b"
+    # It defends a DIFFERENT threat from the regex layer, not a deeper one -
+    # harmful content, not prompt injection. Set false if the model is not
+    # pulled; it also fails open on its own if the model is missing.
+    guard_enabled: bool = True
 
 
 class RuntimeSettings(BaseModel):

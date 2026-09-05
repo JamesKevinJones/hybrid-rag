@@ -89,9 +89,14 @@ flowchart TD
 | 2 | 0 ms | calibrated retrieval confidence | confidence < 0.78 |
 | 3 | ~300 ms | one token from the resident 3B | it answers `O` |
 
-Tier 3 was a separate 1.5B model until measurement killed it. Two models do not
-co-reside in 5.2 GB, so Ollama evicted one per query - a 2-4 second PCIe reload
-that cost more than every other stage combined. See decision 14.
+Tier 3 was a separate 1.5B model. It was consolidated onto the resident
+generator because a one-token vote is less inference than a JSON vote and it
+removes a model, a config field and a class of disagreement bug.
+
+The original justification - that two models could not co-reside and Ollama
+evicted one per query - was asserted, never measured, and is **wrong**: three
+models totalling 4.1 GB sit at 100% GPU here simultaneously. See decision 23,
+which corrects decision 14.
 
 ## Tier contract
 

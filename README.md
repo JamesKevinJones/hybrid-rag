@@ -29,7 +29,7 @@ This runs on a **6 GB VRAM card and 16 GB of single-channel RAM**. Not a worksta
 
 | Constraint | Real number | What it forced |
 |---|---|---|
-| VRAM after Windows DWM | ~5.2 GB usable | One resident model, not two |
+| VRAM after Windows DWM | ~5.2 GB usable | A pinned resident model, `keep_alive: -1` |
 | Memory bandwidth | ~22 GB/s (half dual-channel) | A 21 ms reranker, not a 552 ms one |
 | VRAM needed for QLoRA | 1+ GB more than exists | Training moved to a Colab T4 |
 

@@ -15,12 +15,14 @@ A three-tier waterfall, and the tier numbers are latency budgets:
                      3B generator that is ALREADY RESIDENT in VRAM for a
                      one-token verdict.
 
-Tier 3 used to be a separate 1.5B classifier. On a 6 GB card with roughly
-5.2 GB usable after the desktop compositor, a 1.5B router and a 3B generator do
-not co-reside - Ollama evicts one to load the other, so a query that touched
-both paid a 2-4 second reload over PCIe. The reload cost more than every other
-stage combined. Consolidating onto the pinned generator removed that cliff and
-deleted a model from the dependency list at the same time.
+Tier 3 used to be a separate 1.5B classifier. It was consolidated onto the
+resident generator because a one-token vote is less inference than a JSON vote,
+and because it deletes a model, a config field and a class of bug where the two
+models disagree.
+
+The reason originally given - that the two could not co-reside in 5.2 GB and
+Ollama evicted one per query - was never measured and is wrong. Three models
+totalling 4.1 GB run at 100% GPU on this card. Decision 23 corrects it.
 
 Two vetoes sit after the waterfall and can overrule it:
 
@@ -413,7 +415,7 @@ class RoutingGate:
 
         `model=self._slm_model` resolves to the generator, so this reuses the
         resident weights and never triggers a load. Passing a different model
-        name here is exactly the eviction this refactor removed.
+        name here loads a second model; do that deliberately or not at all.
         """
         if self._generator is None:
             return None, Signal(name="slm_vote", fired=False, weight=0.0, detail="no generator")
