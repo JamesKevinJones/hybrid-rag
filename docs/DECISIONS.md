@@ -344,3 +344,55 @@ corpus passage is dangerous here because it carries instructions, which is the
 regex layer job. The hazard code is parsed and stored by name
 (`content_safety_violent_crimes`), because a bare "S1" in an audit ledger is a
 lookup task for whoever reads it later.
+
+## 25. Presidio verified, and staying opt-in for a measured reason
+
+Written in Module 2, never executed until now - `AnalyzerEngine()` needs a
+spaCy model that is not a declared dependency, so it could have been broken
+since the day it was written. It is not: it constructs and detects, pulling
+en_core_web_lg (382 MB) on first use.
+
+What it buys, and what it costs:
+
+```
+"Maria Alvarez in Lisbon emailed a@b.com"   -> PERSON, LOCATION, EMAIL, URL
+"In Q3 the p95 latency for the S1 path"     -> DATE_TIME on "Q3"
+```
+
+The first line is real recall the regex detector cannot reach. The second is
+the problem: a NER model trained on news prose reads quarters, versions and
+identifiers as named entities, and a technical corpus is made of those. The
+scrubbed text is what reaches both the retriever and the model, so a false
+positive does not just over-redact a log line - it removes the token the answer
+needed.
+
+It stays opt-in, and the guidance is now specific rather than vague about
+"install size": turn it on for correspondence, HR records or support tickets,
+where PERSON and LOCATION are the point. Leave it off for engineering
+documentation, which is what this repo indexes.
+
+## 26. The CI backstop cannot cover direct pushes, and pretending otherwise is worse
+
+The security workflow triggered on `pull_request` only, so on a repo where work
+lands straight on main it had never executed once. Two commits shipped past a
+check that was configured but structurally unreachable.
+
+Adding `push: branches: [main]` looked like the fix. It was not.
+`anthropics/claude-code-security-review` self-guards on the event type and logs
+"ClaudeCode only runs on pull requests, skipping". Run 33978641239 completed
+green in 30 seconds having scanned nothing.
+
+That is strictly worse than the original gap. A check that never runs is
+visibly absent; a green check that scanned nothing looks like coverage, and
+coverage you believe in but do not have is the failure mode security controls
+exist to avoid.
+
+Reverted. The constraint is now stated instead of worked around: **CI review
+requires a PR.** Commits pushed directly to main are covered by the local
+`/security-review` command and nothing else - which matches how the vendored
+tool describes itself, where the local command is the real gate and CI is the
+backstop.
+
+A `note-unreviewed` job remains on push. It makes no API call, cannot fail
+anything, and emits one warning annotation saying this commit was not reviewed
+by CI - so an empty Actions history is never mistaken for a clean one.

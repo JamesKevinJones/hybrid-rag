@@ -172,11 +172,26 @@ class RegexPIIDetector:
 
 
 class PresidioPIIDetector:
-    """NER-backed detection for names, locations and organisations.
+    """NER-backed detection for names, locations and dates.
 
-    Optional on purpose. It pulls spaCy and a language model, which is a large
-    install for a laptop that is already budgeting VRAM, and the regex detector
-    covers the categories with real blast radius on its own.
+    Optional, and now optional for a measured reason rather than a guessed one.
+    Verified against a live spaCy model (it pulls en_core_web_lg, 382 MB, on
+    first construction - not a declared dependency, which is its own trap):
+
+        "Maria Alvarez in Lisbon emailed a@b.com"
+            -> PERSON, LOCATION, EMAIL_ADDRESS, URL     genuine added recall
+        "In Q3 the p95 latency for the S1 path dropped"
+            -> DATE_TIME on "Q3"                        destructive here
+
+    That second line is the trade. A NER model trained on news prose reads
+    quarters, versions and identifiers as named entities, and a technical
+    corpus is made of those. Redacting them removes exactly the tokens a
+    technical answer needs, and the scrubbed text is what reaches both the
+    retriever and the model.
+
+    So: turn this on for a corpus of correspondence, HR records or support
+    tickets, where PERSON and LOCATION are the point. Leave it off for
+    engineering documentation, which is what this repo indexes by default.
     """
 
     name = "presidio"

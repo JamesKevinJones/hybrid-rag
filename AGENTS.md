@@ -46,7 +46,7 @@ src/hybrid_rag/
   governance/
     audit.py         # AuditRecord schema + hash-chained JSONL sink
     pii.py           # Module 2a - detectors, redaction, credential blocking
-    guardrails.py    # Module 2b - regex + Llama-Guard, ingress/context/egress
+    guardrails.py    # Module 2b - regex (injection) + Llama-Guard (content safety)
     middleware.py    # Module 2c - GovernanceEnvelope, enforces invariant 1
   llm/
     ollama_client.py # Level 0 transport
@@ -78,8 +78,9 @@ scripts/
    includes guardrail finding evidence, which is scrubbed before storage.
 5. Nothing crosses the token boundary without a verified `GovernanceEnvelope`.
    `require_envelope=False` is an auditable downgrade, not a performance knob.
-6. One model resident at a time. Passing an explicit `model=` to the Ollama
-   client is what evicts it - do it deliberately or not at all.
+6. Passing an explicit `model=` to the Ollama client loads a second model. Do
+   it deliberately. It does NOT necessarily evict the generator - three models
+   co-reside here at 100% GPU - but each one costs VRAM you have not budgeted.
 7. `relevance_floor` is a property of the cross-encoder. Re-measure it whenever
    `rerank_model` changes; a stale floor silently breaks routing.
 8. CI security review only runs on pull_request - the action skips every other

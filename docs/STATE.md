@@ -68,14 +68,25 @@ The system is complete end to end but has **never called Claude**. To close that
 ## Known gaps
 
 - **Zero cloud tokens have ever been spent.** Every Level 2 test uses a stub.
-  The live client is written and typed but unexercised against the real API.
+  The live client is written and typed but unexercised against the real API,
+  and `ANTHROPIC_API_KEY` is not set in the environment this runs in.
+- Budget limits in `BudgetSettings` are still placeholders (45 msgs / 900k
+  tokens / 5h). They must be set from the real account before the first live
+  escalation, or the veto guards a number nobody chose.
+- No eval cases and no Opus baseline, so `evaluate` and `promote` are proven by
+  unit tests and have never scored a real model. Both are downstream of the
+  first live call.
 - `train_colab.py` has never been run.
-- The eval and promotion suites have no real case set yet - both are proven by
-  unit tests, neither has scored a real model.
-- `scripts/install-wslconfig.ps1` is not run. It caps WSL2 at 6 GB, shared with
-  Docker-in-WSL on this host.
-- `llama-guard3:1b` is now chained in by default (38 ms p50, co-resident).
-  It is a CONTENT-SAFETY layer and does not detect prompt injection - see
-  decision 24 for the measurement.
-- Budget limits in `BudgetSettings` are still placeholders. Set them from what
-  the Claude Pro account actually shows before the first live escalation.
+- Routing thresholds are calibrated against one 214-chunk corpus of this
+  project's own docs - enough to show the signal exists, not enough to claim
+  any routing-percentage target.
+- The audit chain is unkeyed SHA-256. It detects accidents and casual edits,
+  not an attacker who recomputes it. Anchoring it off-machine is unbuilt.
+- `scripts/install-wslconfig.ps1` is not run. Machine-wide, and its 6 GB
+  ceiling is shared with Docker-in-WSL on this host.
+- Presidio is verified and stays OPT-IN: real PERSON/LOCATION recall, but it
+  flags "Q3" as an entity, which is destructive on a technical corpus. See
+  decision 25.
+- CI security review only fires on pull_request. Commits pushed straight to
+  main get a `note-unreviewed` warning annotation and nothing else. See
+  decision 26 and AGENTS rule 8.
