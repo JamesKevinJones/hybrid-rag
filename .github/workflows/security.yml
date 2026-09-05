@@ -13,6 +13,13 @@ permissions:
 
 on:
   pull_request:
+  # Also on direct pushes to main. Without this the backstop never fires on a
+  # solo repo where work lands straight on main - which is exactly the path it
+  # was meant to catch. Two commits shipped before anyone noticed it had never
+  # run once. Restricted to main so feature-branch pushes do not double-review
+  # what the PR trigger will review anyway.
+  push:
+    branches: [main]
 
 jobs:
   security:
@@ -25,7 +32,9 @@ jobs:
 
       - uses: anthropics/claude-code-security-review@main
         with:
-          comment-pr: true
+          # There is no PR to comment on during a push event; the findings
+          # land in the job log instead.
+          comment-pr: ${{ github.event_name == 'pull_request' }}
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
           # Pinned explicitly. Left blank, this action's own default falls
           # back to a dated 2025 snapshot (claude-opus-4-1-20250805) rather
