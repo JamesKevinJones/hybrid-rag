@@ -25,7 +25,11 @@ STRONG = RetrievalSignal(
     top_score=0.95,
     sources=(SourceAttribution(doc_id="d", chunk_id="d::0", score=0.95, rank=0),),
 )
-WEAK = RetrievalSignal(confidence=0.41, n_results=4, top_score=0.55)
+# Well under the calibrated escalation_threshold (0.35), not just under it -
+# a fixture that sits near the boundary silently changes meaning the next
+# time the threshold is re-derived. Measured unanswerable queries top out
+# at 0.0028, so this is the realistic shape of a miss.
+WEAK = RetrievalSignal(confidence=0.02, n_results=4, top_score=0.05)
 
 # One middleware instance for the whole module: the seal key is per-instance, so
 # sharing it is what lets the gate verify envelopes these tests mint.

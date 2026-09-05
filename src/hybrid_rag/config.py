@@ -191,9 +191,25 @@ class RetrievalSettings(BaseModel):
 class RoutingSettings(BaseModel):
     """Level 0 -> Level 2 escalation policy."""
 
-    # Below this calibrated retrieval confidence the local answer is not
-    # trustworthy and the query is escalated. Spec-mandated default.
-    escalation_threshold: float = 0.78
+    # Below this calibrated confidence the local answer is not trustworthy and
+    # the query escalates. Calibrated against an EXTERNAL corpus (Python PEPs,
+    # 665 chunks) rather than this project's own docs, because calibrating a
+    # router against documentation about that router is circular.
+    #
+    # Measured separation, 18 labelled queries, TinyBERT + all-minilm:
+    #     unanswerable  n=8   max 0.0028
+    #     answerable    n=10  min 0.4984
+    # Every threshold in 0.25-0.45 classifies all 18 correctly. 0.35 sits in
+    # that band with ~125x margin over the unanswerable ceiling and 30%
+    # headroom under the answerable floor.
+    #
+    # The original 0.78 was a specification guess and is measurably wrong here:
+    # it forces 3 of 10 answerable queries to escalate, each spending one of
+    # only 25 messages in the window.
+    #
+    # Re-derive with scripts/calibrate_thresholds.py after ANY change to
+    # rerank_model, embed_model or the confidence formula.
+    escalation_threshold: float = 0.35
     # Ask the local SLM for a LOCAL/OPUS vote. Costs ~200 ms locally, zero cloud
     # tokens. Disable for latency-critical paths.
     slm_vote_enabled: bool = True

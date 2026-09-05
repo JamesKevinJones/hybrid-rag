@@ -396,3 +396,55 @@ backstop.
 A `note-unreviewed` job remains on push. It makes no API call, cannot fail
 anything, and emits one warning annotation saying this commit was not reviewed
 by CI - so an empty Actions history is never mistaken for a clean one.
+
+## 27. The escalation threshold recalibrated against a non-circular corpus: 0.78 -> 0.35
+
+Every previous calibration used this project's own documentation. That is
+circular - the corpus is *about* the router being measured, so every query
+finds a suspiciously good match and the numbers flatter themselves. Fixed by
+fetching an external corpus: eight Python PEPs, 343 KB, 665 chunks, entirely
+unrelated to this repo. `scripts/fetch_calibration_corpus.py` reproduces it and
+`scripts/calibrate_thresholds.py` re-derives the numbers.
+
+Eighteen labelled queries. ANSWERABLE means the fetched PEPs genuinely contain
+the answer; UNANSWERABLE deliberately mixes pure nonsense with plausible Python
+questions these particular PEPs do not cover, because that second kind is what
+a real corpus gap looks like.
+
+```
+answerable    n=10  min 0.4984  median 0.9413
+unanswerable  n= 8  max 0.0028  median 0.0000
+
+clean separation: (0.0028, 0.4984) - width 0.4956
+
+  OK  0.250   false escalations 0/10   false locals 0/8
+  OK  0.350   false escalations 0/10   false locals 0/8
+  OK  0.450   false escalations 0/10   false locals 0/8
+      0.600   false escalations 2/10   false locals 0/8
+      0.780   false escalations 3/10   false locals 0/8
+```
+
+The 0.78 in the original specification is measurably wrong on this data: it
+escalates three of ten queries the corpus demonstrably answers. Under the new
+budget caps that is three of twenty-five messages in a five-hour window spent
+on questions the local model could have handled.
+
+Set to **0.35** - inside the perfectly-classifying band, roughly 125x above the
+unanswerable ceiling and with 30% headroom under the answerable floor. The
+midpoint 0.251 also classifies perfectly; 0.35 was preferred because the
+unanswerable scores cluster at exactly 0.0 while the answerable tail is the
+side with genuine variance, so the headroom is better spent there.
+
+`relevance_floor` stays at 0.05, now with external evidence rather than
+self-referential evidence: unanswerable chunks score 0.0000 flat.
+
+Two things this exposed on the way:
+
+- The test fixtures encoded the old threshold. `WEAK` was `confidence=0.41` -
+  weak under 0.78, strong under 0.35 - so five tests inverted meaning silently.
+  Fixtures now sit far from the boundary and say why.
+- The advice string in the calibration script had the cost direction backwards
+  on first write. Lowering the threshold reduces false ESCALATIONS and saves
+  money; raising it reduces false locals. Corrected in the script, because a
+  calibration tool that misstates which error costs what will be used to make
+  exactly the wrong adjustment.

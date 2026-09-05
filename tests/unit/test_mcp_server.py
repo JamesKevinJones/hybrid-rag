@@ -115,7 +115,7 @@ async def test_search_returns_passages_and_the_escalation_hint(wired) -> None:
 
 
 async def test_low_confidence_is_surfaced_as_would_escalate(wired) -> None:
-    wired(["something only loosely related"], 0.41)
+    wired(["something only loosely related"], 0.02)
 
     async with Client(srv.mcp) as client:
         result = await client.call_tool("local_rag_search", {"query": "budget"})
