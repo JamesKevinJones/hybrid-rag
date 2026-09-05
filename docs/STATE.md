@@ -1,6 +1,6 @@
 # State
 
-_Updated 2026-09-05._
+_Updated 2026-09-05 (closeout)._
 
 ## Where we stopped
 
@@ -54,6 +54,59 @@ Guardrail scope:
   regex        catches injection      llama-guard returns `safe` for injection
   llama-guard  catches S1-S13 content regex does not model content harm
 ```
+
+## Calibration verification (re-run at closeout)
+
+`uv run python scripts/calibrate_thresholds.py`, against the 665-chunk external
+PEP corpus, 18 labelled queries:
+
+```
+answerable    n=10  min 0.4984  median 0.9413
+unanswerable  n= 8  max 0.0028  median 0.0000
+clean separation: (0.0028, 0.4984) - width 0.4956
+
+  OK 0.250  false escalations 0/10   false locals 0/8
+  OK 0.350  false escalations 0/10   false locals 0/8   <- locked
+  OK 0.450  false escalations 0/10   false locals 0/8
+     0.600  false escalations 2/10   false locals 0/8
+     0.780  false escalations 3/10   false locals 0/8
+```
+
+**0.35 holds.** Reproducible from a clean checkout via
+`fetch_calibration_corpus.py` then `calibrate_thresholds.py`.
+
+## Air-gap closeout
+
+Verified with no key present, stdin closed:
+
+```
+uv run hybrid-rag ask "Compare every retrieval strategy across all sources"
+  -> outcome local_degraded, "Level 2 unavailable (no credentials)"
+  -> tokens: local 1090+426  cloud 0+0
+  -> exit code 0, no prompt, no error
+```
+
+`scripts/setup_env.py` creates a gitignored `.env` from the example, refuses to
+write if `git check-ignore` says the file would be trackable, never overwrites
+an existing one, and never prints a key.
+
+`scripts/install-wslconfig.ps1 -Check` reports readiness without touching
+anything. It found that **this host already has a `.wslconfig`** with different
+caps - 10 GB memory / 6 processors against the template's 6 GB / 4 - so
+installing would overwrite a deliberate choice. Left for the user to decide.
+
+## IDE integration
+
+- `.vscode/` - tasks (MCP server, doctor, ollama ps, eval tests, full gate,
+  recalibration, env setup), interpreter pinned to `.venv/Scripts/python.exe`,
+  and `mcp.json` pointing at the real server.
+- `.antigravity/instructions.md` - agent persona. Retrieval-first, egress only
+  through the routing gate, structured artifacts per turn.
+- `.antigravity/antigravity.json` - **schema unverified.** agy 1.1.12 has no
+  `mcp` subcommand and no discoverable project-config file. The values inside
+  are correct; the key names are a guess, and the file says so.
+- **Cursor skipped - not installed.** Only a leftover `%APPDATA%\Cursor` cache
+  directory; no executable anywhere on this machine.
 
 ## Exact next step
 

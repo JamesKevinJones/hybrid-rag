@@ -1,0 +1,10 @@
+{
+  "servers": {
+    "hybrid-rag": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "python", "src/hybrid_rag/mcp_servers/server.py"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}

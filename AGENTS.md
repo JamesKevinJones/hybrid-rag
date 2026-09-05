@@ -104,6 +104,19 @@ scripts/
     `scripts/calibrate_thresholds.py` after any reranker or embedder change.
 13. Run everything in `docs/VERIFY.md` before reporting work done.
 
+## IDE integration
+
+- `.vscode/` - tasks, pinned interpreter, `mcp.json`. VS Code is installed here.
+- `.antigravity/instructions.md` - the load-bearing Antigravity file; plain
+  markdown any agent can read. `antigravity.json` beside it has an UNVERIFIED
+  schema (agy 1.1.12 exposes no `mcp` subcommand) and says so in the file.
+- No Cursor config: Cursor is not installed on this machine.
+
+The MCP server registers as **`hybrid-rag`** with tools `local_rag_search`,
+`check_budget_status`, `verify_audit_ledger`. Earlier drafts said
+`LocalGovEngine` and `search_local_knowledge`; those names do not exist and
+calling them fails.
+
 ## Working with the token budget
 
 This project is built under Claude Pro message caps, so the interaction style

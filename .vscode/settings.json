@@ -1,0 +1,39 @@
+{
+  // Explicit interpreter. uv creates .venv in the project root, and the
+  // project pins Python <3.13 while the system interpreter here is 3.14 -
+  // so picking up "python" from PATH silently gets you the wrong runtime.
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
+  "python.terminal.activateEnvironment": true,
+
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": ["tests"],
+
+  "python.analysis.typeCheckingMode": "strict",
+  "python.analysis.extraPaths": ["${workspaceFolder}/src"],
+
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": { "source.organizeImports.ruff": "explicit" }
+  },
+
+  "ruff.importStrategy": "fromEnvironment",
+
+  // Generated at runtime and gitignored; indexing them is noise and the
+  // vector index is large.
+  "files.exclude": {
+    "**/.pytest-tmp": true,
+    "**/__pycache__": true
+  },
+  "search.exclude": {
+    "data/index": true,
+    "data/calibration": true,
+    "data/audit": true,
+    "uv.lock": true
+  },
+
+  // .env holds a real API key when Level 2 is enabled. Never let an editor
+  // feature ship it somewhere.
+  "files.watcherExclude": { "**/data/index/**": true }
+}

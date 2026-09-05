@@ -1,0 +1,73 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "hybrid-rag: MCP server (stdio)",
+      "type": "shell",
+      "command": "uv run python src/hybrid_rag/mcp_servers/server.py",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "detail": "Level 0 only. None of its three tools can spend cloud tokens."
+    },
+    {
+      "label": "hybrid-rag: MCP server (HTTP :8765)",
+      "type": "shell",
+      "command": "uv run python src/hybrid_rag/mcp_servers/server.py --http",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "detail": "Same tools over streamable HTTP, for clients that cannot spawn stdio."
+    },
+    {
+      "label": "hybrid-rag: doctor (VRAM co-residency)",
+      "type": "shell",
+      "command": "uv run hybrid-rag doctor",
+      "problemMatcher": [],
+      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "detail": "Expect ollama up, keep_alive -1, and the resolved generator profile."
+    },
+    {
+      "label": "hybrid-rag: ollama ps (expect ~4.1 GB, 100% GPU)",
+      "type": "shell",
+      "command": "ollama ps",
+      "problemMatcher": [],
+      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "detail": "Three entries totalling ~4.1 GB. A CPU split means the set spilled out of VRAM."
+    },
+    {
+      "label": "hybrid-rag: eval harness tests (offline)",
+      "type": "shell",
+      "command": "uv run pytest tests/unit/test_eval_harness.py -v",
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "detail": "No Ollama, no index, no network."
+    },
+    {
+      "label": "hybrid-rag: full gate (ruff + mypy + pytest)",
+      "type": "shell",
+      "command": "uv run ruff check src tests && uv run mypy && uv run pytest",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": ["$python"],
+      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "detail": "Everything docs/VERIFY.md requires before calling work done."
+    },
+    {
+      "label": "hybrid-rag: recalibrate thresholds",
+      "type": "shell",
+      "command": "uv run python scripts/calibrate_thresholds.py",
+      "problemMatcher": [],
+      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "detail": "Mandatory after any reranker or embedder change. Needs data/calibration."
+    },
+    {
+      "label": "hybrid-rag: setup .env",
+      "type": "shell",
+      "command": "uv run python scripts/setup_env.py",
+      "problemMatcher": [],
+      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "detail": "Creates a gitignored .env from the example. Never overwrites an existing one."
+    }
+  ]
+}

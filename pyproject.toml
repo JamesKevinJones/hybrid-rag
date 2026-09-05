@@ -120,6 +120,8 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# scripts/ is not a package; add the repo root so `import scripts.setup_env` works.
+pythonpath = ["."]
 asyncio_mode = "auto"
 # --basetemp keeps tmp_path inside the repo. pytest's default lives under
 # %TEMP%\pytest-of-<user>, where its atexit cleanup tries to stat a

@@ -168,3 +168,61 @@ def test_every_profile_stays_inside_the_measured_vram_envelope() -> None:
             f"profile {name!r} points at {model!r}; the co-residency envelope was "
             "measured against a ~3B Q4 model"
         )
+
+
+# ------------------------------------------------ .env setup script safety
+
+
+def test_setup_env_refuses_when_dotenv_is_not_git_ignored(tmp_path, monkeypatch) -> None:
+    """The one failure this script exists to prevent: a writable credentials
+    file that git is willing to stage."""
+    import scripts.setup_env as setup_env
+
+    monkeypatch.setattr(setup_env, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(setup_env, "ENV", tmp_path / ".env")
+    monkeypatch.setattr(setup_env, "EXAMPLE", tmp_path / ".env.example")
+    monkeypatch.setattr(setup_env, "is_git_ignored", lambda _p: False)
+    monkeypatch.setattr("sys.argv", ["setup_env.py"])
+
+    assert setup_env.main() == 2
+    assert not (tmp_path / ".env").exists(), "must not create the file it refused to secure"
+
+
+def test_setup_env_never_overwrites_an_existing_dotenv(tmp_path, monkeypatch) -> None:
+    """That file may hold a real key. Clobbering it deletes credentials."""
+    import scripts.setup_env as setup_env
+
+    existing = tmp_path / ".env"
+    existing.write_text("ANTHROPIC_API_KEY=sk-ant-api03-PRECIOUSREALKEY000\n", encoding="utf-8")
+    monkeypatch.setattr(setup_env, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(setup_env, "ENV", existing)
+    monkeypatch.setattr(setup_env, "EXAMPLE", tmp_path / ".env.example")
+    monkeypatch.setattr(setup_env, "is_git_ignored", lambda _p: True)
+    monkeypatch.setattr("sys.argv", ["setup_env.py"])
+
+    assert setup_env.main() == 0
+    assert "PRECIOUSREALKEY" in existing.read_text(encoding="utf-8")
+
+
+def test_setup_env_status_never_prints_the_key(tmp_path, monkeypatch, capsys) -> None:
+    """Terminals get scrolled, screenshotted and pasted into issues."""
+    import scripts.setup_env as setup_env
+
+    secret = "sk-ant-api03-MUSTNEVERBEPRINTED"
+    env = tmp_path / ".env"
+    env.write_text(f"ANTHROPIC_API_KEY={secret}\n", encoding="utf-8")
+    monkeypatch.setattr(setup_env, "ENV", env)
+
+    status = setup_env.key_status()
+    assert secret not in status
+    assert "is set" in status and "characters" in status
+
+
+def test_setup_env_reports_offline_mode_as_supported(tmp_path, monkeypatch) -> None:
+    import scripts.setup_env as setup_env
+
+    env = tmp_path / ".env"
+    env.write_text("# ANTHROPIC_API_KEY=\n", encoding="utf-8")
+    monkeypatch.setattr(setup_env, "ENV", env)
+
+    assert "offline mode" in setup_env.key_status()
