@@ -11,8 +11,10 @@ from hybrid_rag.eval.eval_harness import (
     RecordedResponder,
     Response,
     content_words,
+    extract_code,
     load_cases,
     overlap_ratio,
+    python_syntax_error,
     score_instructions,
     split_sentences,
 )
@@ -277,3 +279,74 @@ def test_a_malformed_format_tag_fails_the_case_not_the_suite() -> None:
     score, violations = score_instructions(case, "some answer")
     assert score == 0.0
     assert "unparseable" in violations[0]
+
+
+# ------------------------------------------------- AST validation of emitted code
+
+
+FENCED_OK = "Here you go:\n\n```python\ndef add(a, b):\n    return a + b\n```"
+FENCED_TRUNCATED = "Here you go:\n\n```python\ndef add(a, b):\n    return a +\n```"
+
+
+def test_valid_fenced_python_parses() -> None:
+    assert python_syntax_error(FENCED_OK) is None
+
+
+def test_truncated_code_is_caught() -> None:
+    """The failure a small distilled model makes constantly.
+
+    No embedding metric notices this: a truncated function is lexically almost
+    identical to a complete one, so groundedness scores it fine.
+    """
+    problem = python_syntax_error(FENCED_TRUNCATED)
+    assert problem is not None
+    assert "syntax error" in problem
+
+
+def test_bare_code_without_a_fence_is_still_checked() -> None:
+    assert python_syntax_error("def add(a, b):\n    return a + b") is None
+    assert python_syntax_error("def add(a, b):\n    return a +") is not None
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "The maximum line length recommended for Python code is 79 characters.",
+        "",
+        "   ",
+        "It depends on whether you are using type hints.",
+    ],
+)
+def test_prose_is_not_a_syntax_error(answer: str) -> None:
+    """Prose is not code. Flagging it would fire the tag on every text answer."""
+    assert python_syntax_error(answer) is None
+    assert extract_code(answer) is None
+
+
+def test_multiple_blocks_are_all_checked() -> None:
+    both_fine = "```python\nx = 1\n```\nand\n```python\ny = 2\n```"
+    one_broken = "```python\nx = 1\n```\nand\n```python\ny = (\n```"
+    assert python_syntax_error(both_fine) is None
+    assert python_syntax_error(one_broken) is not None
+
+
+def test_the_syntax_tag_scores_through_the_normal_path() -> None:
+    case = EvalCase(case_id="c", query="q", format_tags=["python_syntax"])
+    assert score_instructions(case, FENCED_OK) == (1.0, [])
+
+    score, violations = score_instructions(case, FENCED_TRUNCATED)
+    assert score == 0.0
+    assert "syntax error" in violations[0]
+
+
+def test_syntax_combines_with_other_constraints() -> None:
+    case = EvalCase(
+        case_id="c",
+        query="q",
+        must_include=["def add"],
+        must_not_include=["eval("],
+        format_tags=["python_syntax"],
+    )
+    score, violations = score_instructions(case, FENCED_OK)
+    assert score == 1.0
+    assert violations == []

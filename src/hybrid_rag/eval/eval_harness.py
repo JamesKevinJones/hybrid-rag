@@ -25,6 +25,7 @@ harvests every Level 2 answer it produces, so the baseline is free.
 
 from __future__ import annotations
 
+import ast
 import re
 import statistics
 import time
@@ -42,6 +43,7 @@ from hybrid_rag.rag.local_rag import LocalRAGEngine
 
 _SENTENCE = re.compile(r"(?<=[.!?])\s+|\n{2,}")
 _WORD = re.compile(r"[A-Za-z0-9_]+")
+_FENCED = re.compile(r"```(?:python|py)?\s*\n(.*?)```", re.DOTALL)
 # SIM905 wants a literal here rather than `.split()`, so a literal it is.
 _STOPWORDS = frozenset(
     [
@@ -68,7 +70,8 @@ class EvalCase(BaseModel):
     # regardless of how well it scores on groundedness.
     must_not_include: list[str] = Field(default_factory=list)
     # Supported tags: "startswith:<text>", "max_words:<n>", "min_words:<n>",
-    # "json", "no_markdown", "cites" (must reference a [n] source marker).
+    # "json", "no_markdown", "cites" (must reference a [n] source marker),
+    # "python_syntax" (any emitted code must actually parse).
     format_tags: list[str] = Field(default_factory=list)
 
     @property
@@ -312,6 +315,48 @@ class GroundednessScorer:
         return round(supported / len(sentences), 4), unsupported
 
 
+def extract_code(answer: str) -> str | None:
+    """The Python in an answer, or None if it contains none.
+
+    Prefers fenced blocks. Falls back to treating the whole answer as code only
+    when it plainly looks like code - a bare prose sentence is not a syntax
+    error, it is simply not code, and reporting it as one would make the
+    `python_syntax` tag fire on every text answer.
+    """
+    blocks = _FENCED.findall(answer)
+    if blocks:
+        return "\n\n".join(b.strip() for b in blocks)
+    stripped = answer.strip()
+    if not stripped:
+        return None
+    looks_like_code = any(
+        stripped.startswith(kw)
+        for kw in ("def ", "class ", "import ", "from ", "async def ", "@")
+    )
+    return stripped if looks_like_code else None
+
+
+def python_syntax_error(answer: str) -> str | None:
+    """None if the answer's code parses (or contains none). Otherwise the reason.
+
+    A syntax check is not a correctness check and is not pretending to be one.
+    It catches the specific failure a small distilled model makes constantly -
+    emitting code that cannot even be parsed - which no amount of embedding
+    similarity will notice, because a truncated function is lexically almost
+    identical to a complete one.
+    """
+    code = extract_code(answer)
+    if code is None:
+        return None
+    try:
+        ast.parse(code)
+    except SyntaxError as exc:
+        return f"python syntax error at line {exc.lineno}: {exc.msg}"
+    except ValueError as exc:  # null bytes and similar
+        return f"python could not be parsed: {exc}"
+    return None
+
+
 def score_instructions(case: EvalCase, answer: str) -> tuple[float, list[str]]:
     """Positive constraints, negative constraints and format tags."""
     if case.constraint_count == 0:
@@ -351,6 +396,10 @@ def score_instructions(case: EvalCase, answer: str) -> tuple[float, list[str]]:
             violations.append("format: contains markdown")
         elif name == "cites" and not re.search(r"\[\d+\]", answer):
             violations.append("format: no [n] source citation")
+        elif name == "python_syntax":
+            problem = python_syntax_error(answer)
+            if problem is not None:
+                violations.append(f"format: {problem}")
 
     satisfied = case.constraint_count - len(violations)
     return round(max(0.0, satisfied) / case.constraint_count, 4), violations

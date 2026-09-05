@@ -29,9 +29,19 @@ This runs on a **6 GB VRAM card and 16 GB of single-channel RAM**. Not a worksta
 
 | Constraint | Real number | What it forced |
 |---|---|---|
-| VRAM after Windows DWM | ~5.2 GB usable | A pinned resident model, `keep_alive: -1` |
+| VRAM after Windows DWM | ~5.2 GB usable | A 4.1 GB co-resident set, pinned with `keep_alive: -1` |
 | Memory bandwidth | ~22 GB/s (half dual-channel) | A 21 ms reranker, not a 552 ms one |
 | VRAM needed for QLoRA | 1+ GB more than exists | Training moved to a Colab T4 |
+
+Measured co-residency, all at 100% GPU — not estimated from model sizes, which is how I got it wrong the first time ([decision 23](docs/DECISIONS.md)):
+
+```
+generator  llama3.2:3b-instruct-q4_K_M   2.6 GB
+guard      llama-guard3:1b               1.5 GB
+embedder   all-minilm:l6-v2              0.03 GB
+                                         -------
+                                         4.1 GB   inside ~5.2 GB
+```
 
 That is the interesting part. Anyone can wire a RAG pipeline when VRAM is free. The decisions only get sharp when something is genuinely scarce.
 
@@ -43,13 +53,14 @@ Every number below came from running it, and several **contradicted the design**
 
 **Retrieval confidence separates real questions from nonsense by three orders of magnitude:**
 
-| Query | Confidence | Routed |
+Calibrated against an **external** corpus — eight Python PEPs, 665 chunks — because calibrating a router against documentation *about that router* is circular. Eighteen labelled queries, where the negatives mix pure nonsense with plausible Python questions those PEPs genuinely don't cover:
+
+| | n | confidence |
 |---|---|---|
-| "What is the escalation threshold?" | 0.999 | local |
-| "How does the budget veto work?" | 0.987 | local |
-| "How is PII handled?" | 0.553 | escalate |
-| "purple monkey dishwasher tax code" | 0.000 | escalate |
-| "recipe for sourdough bread" | 0.000 | escalate |
+| answerable from the corpus | 10 | min **0.4984**, median 0.9413 |
+| not answerable | 8 | max **0.0028**, median 0.0000 |
+
+A gap of 0.496. Any threshold in 0.25–0.45 classifies all eighteen correctly; the specified 0.78 escalates three of ten answerable queries. Locked at **0.35**, re-derivable with `scripts/calibrate_thresholds.py`.
 
 The first version of that formula scored a real question at 0.648 and pure gibberish at 0.615. **Three hundredths of separation.** It shipped with a green test suite. Only running it against a real corpus exposed that the signal did not exist — [decision 11](docs/DECISIONS.md).
 
@@ -82,6 +93,7 @@ Most RAG demos log what happened. This one refuses to proceed without proof it w
 - **Sealed envelopes.** The router will not escalate without an HMAC-sealed `GovernanceEnvelope` minted for that exact prompt. Not a convention — a check that fails closed.
 - **Credentials are blocked, not masked.** Every other PII category redacts to a placeholder and proceeds. A detected API key refuses the request outright, because masking a leaked credential and carrying on normalises the incident. The right response is a human rotating it.
 - **A training set is an egress channel.** The dataset formatter *drops* any sample carrying a credential rather than redacting it. A masked key still teaches the model the shape of your keys, and weights cannot be un-trained.
+- **Two orthogonal guardrail layers, not one behind the other.** Regex catches prompt injection, exfiltration and residual secrets. Llama Guard catches harmful *content*. Measurement showed Llama Guard returns `safe` for a textbook injection in both prompt formats — it has no notion of injection at all — so calling it a second layer on that threat made the stack look two-deep where it was one-deep.
 - **Retrieved text is data, never instructions.** Corpus passages are screened as hostile input in their own direction. A poisoned document comes back flagged `quarantined` rather than silently dropped — the caller needs to know the corpus is compromised.
 - **Tamper-evident ledger.** Every record chains to the one before it, so an edited row *and a deleted row* are both detectable. The chain is unkeyed SHA-256: it catches accidental damage and casual edits, not an attacker with write access who can recompute it. Anchoring it off-machine is Module 5 work, and `governance/audit.py` says so at the top rather than letting the claim drift.
 
@@ -103,7 +115,7 @@ uv sync --extra dev
 uv run pytest
 ```
 
-116 tests, no Ollama daemon, no index, no network — every backend sits behind a Protocol and the tests inject stubs.
+282 tests, no Ollama daemon, no index, no network — every backend sits behind a Protocol and the tests inject stubs.
 
 To drive the real pipeline you need [Ollama](https://ollama.com) and two models (~2.1 GB):
 
@@ -134,7 +146,13 @@ uv run hybrid-rag evaluate                        # scores local vs the recorded
 uv run hybrid-rag promote ./gguf_out --name v1    # dry run unless --apply
 ```
 
-`ask` is the only command that can spend cloud tokens, and only if the gate escalates *and* a key is configured *and* the budget has room. With no key it degrades to local and reports `cloud 0+0`.
+`ask` is the only command that can spend cloud tokens, and only if the gate escalates *and* a key is configured *and* the budget has room.
+
+### Air-gapped by default
+
+The system runs fully offline with no configuration. Drop `ANTHROPIC_API_KEY=...` into a gitignored `.env` to enable Level 2; leave it out and **every escalation degrades to a local answer, spends zero tokens, and records a `frontier_unavailable` flag in the ledger**. An absent key, a malformed key, a dead DNS resolver and a refused handshake all produce that same outcome — none of them raise. That is the supported mode, not a failure state, and 17 tests hold it.
+
+Budget caps ship as deliberate under-estimates (25 messages / 400k tokens per 5h window, 250 weekly). Guessing low costs a few answers; guessing high costs a lockout mid-session.
 
 ---
 

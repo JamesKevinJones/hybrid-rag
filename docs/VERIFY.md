@@ -11,7 +11,7 @@ uv run pytest
 ```
 
 Expected: `All checks passed!`, `Success: no issues found in 26 source files`,
-`236 passed`.
+`282 passed`.
 
 ## Wiring smoke test
 
@@ -142,3 +142,55 @@ Not run by any test or command. It is machine-wide and calls `wsl --shutdown`,
 which stops every distro and every container inside them. Read
 `scripts/wslconfig.template` first - the 6 GB ceiling is shared with
 Docker-in-WSL on this host.
+
+## Offline / air-gapped verification
+
+The whole suite runs with no network and no Ollama daemon. Nothing in `tests/`
+opens a socket: `respx` intercepts the Ollama transport, and the frontier tier
+is either a stub or the real client with no credentials, which short-circuits
+before a socket is opened.
+
+```bash
+uv run pytest
+```
+
+To confirm the runtime degrades rather than crashes without credentials, make
+sure no key is set and run:
+
+```bash
+uv run hybrid-rag ask "Compare every retrieval strategy across all sources"
+```
+
+Expect `outcome: local_degraded`, `cloud 0+0`, and the reason
+`Level 2 unavailable (no credentials)`. The ledger row carries a
+`frontier_unavailable` compliance flag - that flag is the point, because
+"Level 2 was unreachable" and "Level 2 was not needed" are different facts.
+
+## Re-deriving the thresholds
+
+Mandatory after changing `rerank_model`, `embed_model` or the confidence
+formula. A stale threshold does not fail loudly; it silently routes wrong.
+
+```bash
+uv run python scripts/fetch_calibration_corpus.py
+uv run hybrid-rag ingest ./data/calibration
+uv run python scripts/calibrate_thresholds.py
+```
+
+The corpus fetch is the only network access in the project. It is one-time and
+it is not part of the runtime.
+
+Expect a clean separation - answerable queries well above the threshold,
+unanswerable ones near zero - and a row of `OK` verdicts across the usable
+band. If the script prints `NO SEPARATION`, the cross-encoder is not running.
+
+## VRAM envelope
+
+```bash
+ollama ps
+```
+
+During a query, expect exactly three entries totalling ~4.1 GB, all `100% GPU`:
+the generator, `llama-guard3:1b` and `all-minilm:l6-v2`. A fourth entry, or
+anything showing a CPU split, means something has pushed the set out of VRAM
+and latency will be an order of magnitude worse.

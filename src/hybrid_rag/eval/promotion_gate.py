@@ -10,8 +10,10 @@ Three criteria, and all three have to pass:
   groundedness parity  >= 85% of the Opus baseline. Relative, not absolute -
                        what matters is how much of the frontier model's
                        reliability the small one retained.
-  latency p95          <= 1200 ms. A candidate that is accurate and slow fails.
-                       p95, not p50, because the tail is what users feel.
+  latency p50          <= 1200 ms. A candidate that is accurate and slow
+                       fails. p95 is reported alongside but not gated on: the
+                       median says whether it is usable, the tail says whether
+                       it is pleasant.
   instruction floor    absolute, not relative. Ignoring a negative constraint
                        is not a quality gradient; it is a broken answer, and a
                        baseline that also ignored it does not excuse it.
@@ -195,13 +197,14 @@ class PromotionGate:
                 detail=parity_detail,
             ),
             CriterionResult(
-                name="latency_p95_ms",
-                passed=candidate.latency_p95_ms <= self._s.max_latency_p95_ms,
-                observed=candidate.latency_p95_ms,
-                threshold=self._s.max_latency_p95_ms,
+                name="latency_p50_ms",
+                passed=candidate.latency_p50_ms <= self._s.max_latency_p50_ms,
+                observed=candidate.latency_p50_ms,
+                threshold=self._s.max_latency_p50_ms,
                 detail=(
-                    f"p95 {candidate.latency_p95_ms:.0f} ms against a "
-                    f"{self._s.max_latency_p95_ms:.0f} ms SLA"
+                    f"p50 {candidate.latency_p50_ms:.0f} ms against a "
+                    f"{self._s.max_latency_p50_ms:.0f} ms SLA "
+                    f"(p95 {candidate.latency_p95_ms:.0f} ms, reported not gated)"
                 ),
             ),
             CriterionResult(

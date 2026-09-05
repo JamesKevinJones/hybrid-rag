@@ -30,6 +30,12 @@ local model provably cannot do, and be able to prove afterwards which was which.
 - FlashRank (`ms-marco-TinyBERT-L-2-v2`) in CORE deps, not an extra. Without
   a cross-encoder the routing confidence signal is noise.
 - No local training. QLoRA runs on a Colab T4; see `scripts/train_colab.py`.
+- Measured VRAM envelope, 100% GPU: generator 2.6 + llama-guard3:1b 1.5 +
+  all-minilm 0.03 = **4.1 GB** inside ~5.2 GB usable. The `code` profile
+  (qwen2.5-coder:3b) totals 3.7 GB. Every generator profile must be ~3B Q4;
+  a 7B breaks the envelope silently by spilling to shared system memory.
+- Level 2 is optional. `ANTHROPIC_API_KEY` in a gitignored `.env` enables it;
+  absent, the system is fully air-gapped and every escalation degrades.
 
 ## Layout
 
@@ -90,7 +96,13 @@ scripts/
    discarded - the frontier client is never touched. There is a test for it.
 10. Restored PII goes to the user only. Never into the ledger, never into the
    training set. `ScrubResult.reverse_map` is excluded from serialization.
-11. Run everything in `docs/VERIFY.md` before reporting work done.
+11. Two guardrail layers, ORTHOGONAL not stacked. Regex = prompt injection,
+    exfiltration, residual secrets. Llama Guard = harmful content only; it
+    returns `safe` for a textbook injection. Neither substitutes for the other.
+12. Thresholds are calibrated against `data/calibration` (external PEPs), never
+    against this repo's own docs - that is circular. Re-run
+    `scripts/calibrate_thresholds.py` after any reranker or embedder change.
+13. Run everything in `docs/VERIFY.md` before reporting work done.
 
 ## Working with the token budget
 

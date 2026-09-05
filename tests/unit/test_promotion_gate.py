@@ -99,14 +99,14 @@ async def test_an_ungrounded_candidate_fails_parity(gate) -> None:
 
 
 async def test_an_accurate_but_slow_candidate_fails_the_sla(gate) -> None:
-    """Accuracy does not buy latency. p95, because the tail is what users feel."""
+    """Accuracy does not buy latency. Gated on p50 per the Module 5 spec."""
     verdict = await gate().evaluate(
         candidate=FixedResponder("candidate", GROUNDED, 3000.0),
         baseline=FixedResponder("opus-baseline", GROUNDED, 4000.0),
         cases=CASES,
     )
     assert not verdict.eligible
-    latency = next(c for c in verdict.criteria if c.name == "latency_p95_ms")
+    latency = next(c for c in verdict.criteria if c.name == "latency_p50_ms")
     assert not latency.passed
     assert latency.threshold == 1200.0
 

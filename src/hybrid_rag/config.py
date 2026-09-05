@@ -311,8 +311,11 @@ class PromotionSettings(BaseModel):
 
     # Fraction of the Opus baseline's groundedness the candidate must reach.
     min_groundedness_parity: float = 0.85
-    # Hard SLA. A model that is accurate and slow still fails.
-    max_latency_p95_ms: float = 1200.0
+    # Hard SLA, measured at p50 per the Module 5 specification. p95 is still
+    # computed and reported: the median says whether the model is usable, the
+    # tail says whether it is pleasant, and a candidate that passes p50 while
+    # its p95 doubles is worth seeing before you promote it.
+    max_latency_p50_ms: float = 1200.0
     # Instruction-following may not regress at all; format and negative
     # constraints are the difference between a usable answer and a broken one.
     min_instruction_precision: float = 0.90
