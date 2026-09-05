@@ -110,6 +110,10 @@ class ExecutionResult(BaseModel):
     retrieval_confidence: float = 0.0
     routing_stage: str | None = None
     degraded_reason: str | None = None
+    # Distinguishes "Level 2 was unreachable" from "Level 2 was not needed" and
+    # from "Level 2 was refused". An operator reading the ledger on an
+    # air-gapped host needs to see connectivity, not infer it from prose.
+    frontier_unavailable: bool = False
 
     local_tokens_in: int = 0
     local_tokens_out: int = 0
@@ -315,6 +319,7 @@ class AgentOrchestrator:
             # Hand the capacity straight back rather than holding it while we
             # do something that was never going to need it.
             self._gate.abort(decision, reason="frontier tier unavailable")
+            result.frontier_unavailable = True
             decision.degraded = True
             decision.reason = "Level 2 unavailable (no credentials); answered locally"
             await self._execute_local(result, decision, envelope, scrub, context)
@@ -347,6 +352,10 @@ class AgentOrchestrator:
                 )
                 spend.record(completion.tokens_in, completion.tokens_out)
         except OpusUnavailable as exc:
+            # Every Level 2 failure lands here: no key, bad key, DNS failure on
+            # an air-gapped host, refused handshake, 429, timeout. All of them
+            # degrade; none of them raise.
+            result.frontier_unavailable = True
             decision.degraded = True
             decision.reason = _safe_reason(f"Level 2 call failed ({exc}); answered locally")
             await self._execute_local(result, decision, envelope, scrub, context)
@@ -413,6 +422,8 @@ class AgentOrchestrator:
         flags = [f"outcome:{result.outcome}"]
         if result.degraded_reason:
             flags.append("degraded_local")
+        if result.frontier_unavailable:
+            flags.append("frontier_unavailable")
         if result.quarantined_chunks:
             flags.append("context_quarantined")
         if result.distilled:
@@ -452,6 +463,7 @@ class AgentOrchestrator:
                     "quarantined_chunks": result.quarantined_chunks,
                     "distilled": result.distilled,
                     "degraded_reason": result.degraded_reason,
+                    "frontier_unavailable": result.frontier_unavailable,
                 },
             )
         )

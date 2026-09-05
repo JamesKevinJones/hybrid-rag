@@ -16,6 +16,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -180,10 +181,16 @@ class BudgetSettings(BaseModel):
     work.
     """
 
+    # DELIBERATE UNDER-ESTIMATES. These are not the published Pro limits and
+    # are not trying to be. The gate's job is to degrade to local *before* the
+    # provider locks the account out, and the cost of the two errors is wildly
+    # asymmetric: guessing low costs a few answers that could have been better,
+    # guessing high costs a hard lockout mid-session with no graceful path.
+    # Raise them only against numbers read off the real account.
     window_hours: float = 5.0
-    max_messages_per_window: int = 45
-    max_tokens_per_window: int = 900_000
-    weekly_message_cap: int = 900
+    max_messages_per_window: int = 25
+    max_tokens_per_window: int = 400_000
+    weekly_message_cap: int = 250
     reserve_fraction: float = 0.20
     ledger_path: Path = REPO_ROOT / "data" / "audit" / "budget_ledger.jsonl"
     # Longest a reservation may sit uncommitted before the sweeper reclaims it.
@@ -294,7 +301,19 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Process-wide settings singleton. Call `get_settings.cache_clear()` in tests."""
+    """Process-wide settings singleton. Call `get_settings.cache_clear()` in tests.
+
+    `.env` is loaded into the process environment first, and that is load-
+    bearing rather than a convenience. `env_file` on its own only maps PREFIXED
+    names (`HYBRID_RAG_ANTHROPIC__API_KEY`) onto settings fields - it never
+    touches `os.environ`. So a `.env` holding the ordinary
+    `ANTHROPIC_API_KEY=...` that every other tool expects would be silently
+    ignored by the one code path that looks for it, and the only symptom would
+    be a system that quietly degraded to local forever.
+
+    `override=False` means a real environment variable always beats the file.
+    """
+    load_dotenv(REPO_ROOT / ".env", override=False)
     settings = Settings()
     settings.ensure_dirs()
     return settings

@@ -367,3 +367,50 @@ async def test_an_upstream_error_string_is_scrubbed_before_the_ledger(build, aud
     record = audit.records[-1]
     assert FAKE_KEY not in record.model_dump_json()
     assert FAKE_KEY not in (result.degraded_reason or "")
+
+
+# ------------------------------------------------------------- air-gap
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        OpusUnavailable("no ANTHROPIC_API_KEY; Level 2 is unreachable"),
+        OpusUnavailable("Level 2 call failed: ConnectError: getaddrinfo failed"),
+        OpusUnavailable("Level 2 call failed: ConnectTimeout: timed out"),
+    ],
+)
+async def test_air_gapped_failures_all_degrade_with_a_structured_flag(
+    build, audit, failure: Exception
+) -> None:
+    """No key, dead DNS, refused connection - one outcome, zero tokens, no crash."""
+    orch, _, _, budget, _ = build(confidence=0.10, frontier=StubFrontier(raises=failure))
+    result = await orch.execute("Compare the trade-offs of every retrieval strategy")
+
+    assert result.outcome is Outcome.LOCAL_DEGRADED
+    assert result.frontier_unavailable is True
+    assert not result.spent_cloud_tokens
+    assert result.answer == LONG_ANSWER, "the user still gets an answer"
+    assert budget.snapshot().tokens_used == 0, "capacity returned, not stranded"
+
+    record = audit.records[-1]
+    assert "frontier_unavailable" in record.compliance_flags
+    assert record.extra["frontier_unavailable"] is True
+
+
+async def test_an_available_frontier_does_not_set_the_flag(build, audit) -> None:
+    orch, _, _, _, _ = build(confidence=0.10)
+    result = await orch.execute("Compare the trade-offs of every retrieval strategy")
+
+    assert result.outcome is Outcome.OPUS
+    assert result.frontier_unavailable is False
+    assert "frontier_unavailable" not in audit.records[-1].compliance_flags
+
+
+async def test_a_local_answer_never_sets_the_flag(build, audit) -> None:
+    """Level 2 not needed is a different fact from Level 2 not reachable."""
+    orch, _, _, _, _ = build(confidence=0.95)
+    result = await orch.execute("How does the budget veto work?")
+
+    assert result.outcome is Outcome.LOCAL
+    assert result.frontier_unavailable is False

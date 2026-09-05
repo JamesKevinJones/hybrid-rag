@@ -28,7 +28,15 @@ from hybrid_rag.governance.pii import PIIScrubber
 
 
 class OpusUnavailable(RuntimeError):
-    """No credentials, no network, or the provider refused. Degrade to local."""
+    """No credentials, no network, or the provider refused. Degrade to local.
+
+    Every failure mode of the Level 2 tier arrives as this one type: an absent
+    key, a malformed key, a DNS failure on an air-gapped host, a refused TLS
+    handshake, a 429, a 500, a timeout. The caller's response to all of them is
+    identical - answer locally and record why - so making the caller
+    discriminate between them would be asking it to care about a distinction
+    that has no consequence.
+    """
 
 
 # Failure text ends up in `decision_reason`, which is written to the governance
@@ -108,9 +116,15 @@ class AnthropicOpusClient:
             raise OpusUnavailable(
                 "the `anthropic` package is not installed (extra: cloud)"
             ) from exc
-        self._client = AsyncAnthropic(
-            api_key=self._api_key, timeout=self._s.request_timeout_s
-        )
+        try:
+            # Constructing the client can itself throw - a malformed key, a
+            # proxy env var the SDK rejects. On an air-gapped or misconfigured
+            # host that must degrade, not crash the request.
+            self._client = AsyncAnthropic(
+                api_key=self._api_key, timeout=self._s.request_timeout_s
+            )
+        except Exception as exc:
+            raise OpusUnavailable(f"could not construct the client: {_safe_error(exc)}") from exc
         return self._client
 
     async def complete(
