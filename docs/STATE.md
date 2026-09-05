@@ -1,6 +1,6 @@
 # State
 
-_Updated 2026-09-05 (closeout)._
+_Updated 2026-09-05. **SESSION CLOSED** - see 'Where to pick up' at the end._
 
 ## Where we stopped
 
@@ -108,33 +108,68 @@ installing would overwrite a deliberate choice. Left for the user to decide.
 - **Cursor skipped - not installed.** Only a leftover `%APPDATA%\Cursor` cache
   directory; no executable anywhere on this machine.
 
-## Exact next step
+## Where to pick up
 
-**The system has still never called Claude.** Everything downstream of that is
-blocked by it, and it is now a two-minute task:
+The project is at a deliberate stopping point. Nothing is half-written, the
+tree is clean, and `main` is pushed.
 
-1. Create `.env` in the repo root (gitignored) with `ANTHROPIC_API_KEY=sk-ant-...`
-2. `uv run hybrid-rag ask "<a genuinely hard question>"` and confirm the ledger
-   shows `tier: opus` with real token counts.
-3. Repeat until `data/datasets/distillation_train.jsonl` holds a few hundred
-   curated samples, then upload it plus `scripts/train_colab.py` to Colab.
-4. Build `data/datasets/eval_cases.jsonl` and `opus_baseline.jsonl` from the
-   harvested traces so `evaluate` and `promote` have something real to score.
+**Operating mode: OFFLINE, by decision 28.** No `ANTHROPIC_API_KEY` is
+configured and that is the accepted state. Every escalation degrades to a local
+answer with zero cloud tokens and a `frontier_unavailable` ledger flag. Do not
+treat this as a misconfiguration to fix.
 
-## Known gaps
+**MCP tool names are frozen** (decision 28): server `hybrid-rag`, tools
+`local_rag_search`, `check_budget_status`, `verify_audit_ledger`. The
+`LocalGovEngine` / `search_local_knowledge` names were rejected, not forgotten.
 
-- **Zero cloud tokens have ever been spent.** Every Level 2 test uses a stub.
-  The live client is written, typed and hardened but unexercised against the
-  real API.
-- `train_colab.py` has never been run.
-- `evaluate` and `promote` are proven by unit tests and have never scored a
-  real model - both are downstream of the first live call.
-- The calibration set is 18 queries over 8 PEPs. Enough to move a threshold off
-  a guessed value with confidence; not enough to claim a routing-percentage
-  target. Widen it before quoting one.
-- The audit chain is unkeyed SHA-256: it detects accidents and casual edits,
-  not an attacker who recomputes it. Anchoring off-machine is unbuilt.
-- `scripts/install-wslconfig.ps1` is written and NOT run. Machine-wide, and its
-  6 GB ceiling is shared with Docker-in-WSL on this host.
-- CI security review only fires on `pull_request`. Direct pushes to main get a
-  `note-unreviewed` warning annotation and nothing else.
+### If you want to keep building offline
+
+Everything here needs no key and no network:
+
+1. **Widen the calibration set.** 18 queries over 8 PEPs moved the threshold
+   off a guessed value; it is not enough to claim a routing-percentage target.
+   Add queries and PEPs, re-run `scripts/calibrate_thresholds.py`.
+2. **Anchor the audit chain off-machine.** It is unkeyed SHA-256 today - it
+   detects accidents and casual edits, not an attacker who recomputes it.
+   `governance/audit.py` states that threat model at the top.
+3. **Exercise the `code` generator profile.** `qwen2.5-coder:3b` is pulled and
+   measured co-resident at 3.7 GB, but nothing has been routed through it.
+4. **Build an eval case set** against `data/calibration`. `evaluate` works with
+   a local candidate on both sides; only the Opus baseline needs a key.
+
+### If you ever want Level 2
+
+```
+uv run python scripts/setup_env.py
+# uncomment ANTHROPIC_API_KEY in the generated .env, paste a key
+uv run hybrid-rag ask "<a genuinely hard question>"
+```
+
+Confirm the ledger shows `tier: opus` with real token counts. That single call
+unblocks the distillation dataset, the Opus baseline, `train_colab.py` and the
+promotion gate - all four are built and waiting on it.
+
+### Verify anything still works
+
+```
+uv run ruff check src tests && uv run mypy && uv run pytest
+```
+
+286 tests, no network, no Ollama required. `docs/VERIFY.md` has the rest.
+
+## Known gaps (all deliberate)
+
+- **Zero cloud tokens have ever been spent.** By decision 28, this is the
+  intended state. The live client is built, typed and hardened but unused.
+- `train_colab.py`, the Opus baseline, `evaluate` and `promote` are downstream
+  of a first live call. Built, unit-tested, never run against a real model.
+- Calibration is 18 queries over 8 PEPs. Enough to move a threshold off a
+  guess; not enough to quote a routing percentage.
+- The audit chain is unkeyed SHA-256; off-machine anchoring is unbuilt.
+- `scripts/install-wslconfig.ps1` is NOT run. This host already has a
+  `.wslconfig` at 10 GB / 6 processors against the template's 6 GB / 4, so
+  installing would overwrite a deliberate choice.
+- CI security review fires only on `pull_request`. Direct pushes to main get a
+  `note-unreviewed` annotation and nothing else.
+- `.antigravity/antigravity.json` has an unverified schema; the file says so.
+- Cursor config absent - Cursor is not installed on this machine.

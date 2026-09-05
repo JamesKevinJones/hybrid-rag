@@ -448,3 +448,33 @@ Two things this exposed on the way:
   money; raising it reduces false locals. Corrected in the script, because a
   calibration tool that misstates which error costs what will be used to make
   exactly the wrong adjustment.
+
+## 28. Offline mode is the accepted operating mode, and the tool names are frozen
+
+Two standing decisions taken at session close, recorded because both are the
+kind of thing a later session would otherwise "helpfully" undo.
+
+**Offline is the mode, not a degraded state.** No `ANTHROPIC_API_KEY` is
+configured and none is planned for now. The system runs entirely on Level 0:
+every escalation the router asks for degrades to a local answer, spends zero
+cloud tokens, and records a `frontier_unavailable` flag in the ledger. That is
+a supported, tested path - 17 tests hold it - not a fault to be repaired.
+
+A future session should NOT treat the absent key as a misconfiguration, prompt
+for one, or route around the gate to "get the real answer". If Level 2 is
+wanted later the step is one line in a gitignored `.env`, and it is the user's
+to take.
+
+**The MCP tool names stay as they are.** The server registers as `hybrid-rag`
+with `local_rag_search`, `check_budget_status` and `verify_audit_ledger`. An
+earlier draft used `LocalGovEngine` and `search_local_knowledge`; those names
+were considered and explicitly rejected rather than forgotten. Every IDE config
+in the repo references the real names, and renaming now would break them for
+cosmetic alignment with a document that no longer describes the system.
+
+What this closes: Level 2 is fully built, typed, hardened and tested at its
+boundary, and deliberately unused. The distillation loop, the Opus baseline and
+the promotion gate all sit downstream of a first live call that has not been
+made and is not currently wanted. They are unfinished by choice, and the
+distinction between "unfinished" and "broken" is the thing this entry exists to
+preserve.
