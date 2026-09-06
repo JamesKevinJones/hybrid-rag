@@ -40,6 +40,11 @@ dependencies = [
   # CLI surface
   "typer>=0.12,<1",
   "rich>=13.7,<15",
+  # Interactive TUI: history, completion and a REPL that does not fight asyncio.
+  # `prompt_toolkit.PromptSession.prompt_async` is why this is here rather than
+  # `input()` - the TUI runs inside a running event loop and a blocking read
+  # would stall the container's background tasks.
+  "prompt-toolkit>=3.0,<4",
   "fastmcp>=2.0,<3",
 ]
 
@@ -94,6 +99,11 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "ANN", "RUF"]
 ignore = ["ANN401"]
+
+[tool.ruff.lint.isort]
+# `scripts/` is this repo's own code even though it is not an installed package.
+# Without this, isort files `from scripts import ...` under third-party imports.
+known-first-party = ["hybrid_rag", "scripts"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["ANN"]

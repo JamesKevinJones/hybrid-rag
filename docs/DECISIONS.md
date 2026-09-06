@@ -478,3 +478,91 @@ the promotion gate all sit downstream of a first live call that has not been
 made and is not currently wanted. They are unfinished by choice, and the
 distinction between "unfinished" and "broken" is the thing this entry exists to
 preserve.
+
+---
+
+## 29. The status panel may show a measurement, a citation, or nothing
+
+Module 6 is a terminal UI, and a status panel is the easiest place in a
+codebase to launder a guess into something that looks instrumented. The
+specification for it arrived with plausible numbers already in the mockup -
+`~3.7 GB VRAM`, `21ms p50`, `38ms`, `34 t/s`, `Conf: 0.94`, `Hash: a8f9...c1`.
+Rendered as written, those would have been literals in a panel that reads like
+a readout. This repo has four entries already (15, 23, 24, 27) where exactly
+that kind of number turned out to be invented, so the panel was built to one
+rule instead:
+
+**Every value on screen is live, cited, or absent.**
+
+| Field | Where it comes from |
+|---|---|
+| model, residency, VRAM | `ollama ps`, parsed at render time |
+| budget | `RollingWindowBudget.snapshot()` |
+| escalation threshold | `settings.routing.escalation_threshold` |
+| air-gap state | whether the frontier client reports `available` |
+| confidence, latency, tokens/s, PII | the `ExecutionResult` for that turn |
+| ledger hash | the chain hash the audit sink returned for that turn |
+| reranker 21 ms, guard 38 ms | recorded benchmarks, labelled `recorded in decision 15` / `24` |
+
+Three consequences worth stating because they look like omissions:
+
+**`probe_residency()` returns `None`, not `[]`, when it could not ask.** "No
+model is loaded" and "I could not find out" are different facts and the panel
+prints them differently. Collapsing them is precisely how a status display
+starts lying.
+
+**Throughput disappears when generation was not timed.** Not a zero, not a
+dash - the field is absent. `generation_ms` was added to `ExecutionResult` for
+this: dividing tokens by end-to-end latency would have quietly folded
+retrieval and rerank into a number labelled tokens per second.
+
+**The spinner is event-driven.** `execute()` takes an `on_stage` callback and
+fires it inside the pipeline. Animating three plausible phases on a timer would
+have been fewer lines and would have been a fabricated measurement wearing a
+spinner - it would happily claim to be reranking while blocked on the guard
+model.
+
+`/model` is constrained for the same reason. It accepts a profile key or the
+model that key maps to, and nothing else. The co-residency envelope was
+measured against ~3B Q4 weights; a 7B typed at a prompt does not fail, it
+spills into shared system memory and costs an order of magnitude on a
+single-channel bus. Adding a profile is a config change and reviewable. Typing
+one at a REPL is not.
+
+---
+
+## 30. The MCP launch command was wrong in a way that only fails elsewhere
+
+`.vscode/mcp.json` was specified as:
+
+```
+"args": ["-m", "src.hybrid_rag.mcp_servers.server"]
+```
+
+It starts. That is the problem. `src/` has no `__init__.py`, so while the
+working directory is the repo root it resolves as an implicit namespace package
+and the server comes up looking healthy. Two things are wrong underneath:
+
+1. From any other working directory it is `ModuleNotFoundError: No module
+   named 'src'`. Verified both ways. An editor extension does not necessarily
+   inherit the working directory a terminal does, which is the exact fragility
+   the change was meant to remove.
+2. When it *does* resolve, the package is imported twice under two names. The
+   server module loads as `src.hybrid_rag.mcp_servers.server` while its own
+   imports (`from hybrid_rag.config import ...`) load the installed copy
+   alongside it. Two `Settings` classes, two module registries, one process.
+
+Corrected to `hybrid_rag.mcp_servers.server`, which uses the installed
+distribution and does not depend on the working directory at all. The
+interpreter pinning that was actually asked for is kept and is the right call:
+`${workspaceFolder}/.venv/Scripts/python.exe` sidesteps `uv` missing from the
+extension's PATH and the system interpreter being 3.14 against a `<3.13` pin.
+
+`scripts/verify_mcp_clients.py` exists because a unit test structurally cannot
+catch this. `tests/unit/test_mcp_server.py` drives the tools through an
+in-process FastMCP client, which never spawns an interpreter, so it cannot
+observe a launch command at all. The script speaks newline-delimited JSON-RPC
+to a real subprocess, started **from a working directory that is deliberately
+not the repo root**, and it has its own tests asserting that it rejects the
+`src.` form, a missing interpreter and a renamed server. A verifier that cannot
+fail is the defect in decision 26 wearing different clothes.

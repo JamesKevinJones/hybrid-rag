@@ -29,8 +29,8 @@ from pathlib import Path
 # Calibration runs against its own collection so it never disturbs a working index.
 os.environ.setdefault("HYBRID_RAG_VECTOR__COLLECTION", "calib_minilm_384")
 
-from hybrid_rag.config import get_settings  # noqa: E402
-from hybrid_rag.container import build_container  # noqa: E402
+from hybrid_rag.config import get_settings
+from hybrid_rag.container import build_container
 
 # The PEPs in the corpus cover these directly.
 ANSWERABLE = [

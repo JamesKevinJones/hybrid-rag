@@ -115,7 +115,7 @@ uv sync --extra dev
 uv run pytest
 ```
 
-282 tests, no Ollama daemon, no index, no network — every backend sits behind a Protocol and the tests inject stubs.
+331 tests, no Ollama daemon, no index, no network — every backend sits behind a Protocol and the tests inject stubs.
 
 To drive the real pipeline you need [Ollama](https://ollama.com) and two models (~2.1 GB):
 
@@ -129,6 +129,22 @@ uv run hybrid-rag route "How does the budget veto work?"
 
 `route` is a dry run: it reserves budget and immediately releases it, so you can watch the router decide without spending anything.
 
+### The terminal UI
+
+```bash
+uv run hybrid-rag          # or start_rag.bat
+```
+
+A chat loop over the same pipeline `ask` uses, with `/doctor`, `/budget`, `/audit` and `/model` alongside it. Needs a real Windows console — PowerShell, Windows Terminal or cmd.exe. Git Bash's MinTTY cannot host it and the UI says so rather than crashing.
+
+Every value in the status panel is live, cited, or absent: residency comes from `ollama ps` at render time, confidence and latency from the result object, the ledger hash from the row that turn actually wrote. The two benchmark figures on screen are labelled with the decision that recorded them. There are no literals dressed as readings — [decision 29](docs/DECISIONS.md) explains why that rule needed writing down.
+
+```
+  Local  •  34 tok/s  •  conf 0.99  •  PII clean  •  1204 ms  •  ledger ec7d..2b
+```
+
+Throughput disappears from that line when generation was not timed. Not a zero, not a dash — absent.
+
 ### As an MCP server
 
 ```bash
@@ -137,6 +153,12 @@ uv run python -m hybrid_rag.mcp_servers.server --http  # port 8765
 ```
 
 Three tools, all local, none able to spend cloud quota: `local_rag_search`, `check_budget_status`, `verify_audit_ledger`.
+
+```bash
+uv run python scripts/verify_mcp_clients.py
+```
+
+Speaks newline-delimited JSON-RPC to a real subprocess, launched from a working directory that is deliberately *not* the repo root, and validates the VS Code and Antigravity configs on the way. That last detail is the point: the specified launch command worked from the repo root and nowhere else ([decision 30](docs/DECISIONS.md)), which no in-process test could have caught.
 
 ### The full pipeline
 
@@ -162,7 +184,8 @@ Budget caps ship as deliberate under-estimates (25 messages / 400k tokens per 5h
 src/hybrid_rag/
 ├── config.py            every tunable; nothing else reads os.environ
 ├── container.py         composition root - the ONLY place backends are constructed
-├── cli.py               doctor · ingest · route · scan · verify-ledger
+├── cli.py               chat · doctor · ingest · route · scan · verify-ledger
+├── ui/tui.py            Module 6 - terminal UI. Renders; never decides or spends.
 ├── routing/
 │   ├── routing_gate.py  Module 1a - the 3-tier waterfall
 │   └── budget.py        rolling window; holds a hard veto over the router
@@ -181,11 +204,12 @@ src/hybrid_rag/
     └── promotion_gate.py Module 5c - 3 criteria, opt-in alias update
 scripts/
 ├── train_colab.py       Module 4b - Unsloth QLoRA on a free T4, GGUF export
+├── verify_mcp_clients.py  real stdio JSON-RPC handshake against the MCP server
 ├── wslconfig.template   WSL2 memory caps so the host stops thrashing
 └── install-wslconfig.ps1
 ```
 
-**Status:** Modules 1 through 5 are built, tested and running against live local models. 236 tests, mypy strict clean. Module 4b (Colab training) is written and unrun, and **no component has ever called Claude** - the Level 2 client is live code with a stubbed test double, and the system currently degrades to local because no key is configured. That degradation is the interesting part: it costs zero tokens and says so.
+**Status:** Modules 1 through 6 are built, tested and running against live local models. 331 tests, mypy strict clean. Module 4b (Colab training) is written and unrun, and **no component has ever called Claude** - the Level 2 client is live code with a stubbed test double, and the system currently degrades to local because no key is configured. That degradation is the interesting part: it costs zero tokens and says so.
 
 ---
 
@@ -193,7 +217,7 @@ scripts/
 
 Everything is argued rather than asserted, with the measurement that produced it:
 
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — 18 decisions, each with the number that forced it
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — 30 decisions, each with the number that forced it
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — full diagram, tier contract, five governance invariants
 - [`docs/SPEC-DELTA.md`](docs/SPEC-DELTA.md) — where this diverges from the reference design it started as, and six defects found in that reference
 - [`docs/VERIFY.md`](docs/VERIFY.md) — how to prove a change works

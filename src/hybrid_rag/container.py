@@ -72,6 +72,40 @@ class Container:
     ) -> None:
         await self.aclose()
 
+    def switch_generator(self, name: str) -> str:
+        """Point the resident generator at another profile. Returns the model id.
+
+        Accepts a profile key (`code`) or the model it maps to
+        (`qwen2.5-coder:3b`), and NOTHING else. An arbitrary model name is
+        refused on purpose: the co-residency envelope in `OllamaSettings` was
+        measured against ~3B Q4 weights, and a 7B typed at a prompt does not
+        fail - it silently spills into shared system memory and costs an order
+        of magnitude on a single-channel bus. Adding a profile is a config
+        change, which is reviewable; typing one at a REPL is not.
+
+        The gate is re-pointed alongside the client because it holds the
+        resolved name rather than the settings object.
+        """
+        ollama = self.settings.ollama
+        profile = name if name in ollama.generator_profiles else None
+        if profile is None:
+            profile = next(
+                (key for key, model in ollama.generator_profiles.items() if model == name),
+                None,
+            )
+        if profile is None:
+            known = ", ".join(
+                f"{key} ({model})" for key, model in sorted(ollama.generator_profiles.items())
+            )
+            raise ValueError(f"unknown generator {name!r}; known profiles: {known}")
+
+        ollama.generator_profile = profile
+        # An override would win over the profile we just set, so clear it.
+        ollama.generator_model_override = None
+        resolved = ollama.generator_model
+        self.gate.set_slm_model(resolved)
+        return resolved
+
     async def aclose(self) -> None:
         await self.rag.aclose()
         await self.ollama.aclose()

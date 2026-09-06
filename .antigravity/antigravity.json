@@ -25,8 +25,18 @@
 
   "mcpServers": {
     "hybrid-rag": {
-      "command": "uv",
-      "args": ["run", "python", "src/hybrid_rag/mcp_servers/server.py"],
+      "command": ".venv/Scripts/python.exe",
+      "args": ["-m", "hybrid_rag.mcp_servers.server"],
+      "_command_note": [
+        "The venv interpreter by path, and the INSTALLED module path. Not",
+        "`uv run` (uv may not be on the PATH an editor inherits), not a bare",
+        "`python` (the system interpreter here is 3.14 and this pins <3.13),",
+        "and never `src.hybrid_rag.mcp_servers.server` - that form resolves",
+        "only while the working directory is the repo root, and when it does",
+        "resolve it imports this package twice under two names.",
+        "Re-checked against a live stdio session by",
+        "scripts/verify_mcp_clients.py."
+      ],
       "transport": "stdio",
       "description": "Local-first RAG over this machine's corpus. Every tool runs on local hardware and consumes zero cloud tokens.",
       "tools": [
@@ -77,7 +87,14 @@
   },
 
   "hooks": {
-    "_status": "ASPIRATIONAL - no hook mechanism was found in agy 1.1.12.",
+    "_status": [
+      "The COMMAND is verified: piped a clean diff it prints `cleared` and",
+      "exits 0; piped one carrying an ANTHROPIC_API_KEY it prints `live",
+      "credential material detected` and exits 1. What remains UNVERIFIED is",
+      "the wiring - no hook mechanism was found in agy 1.1.12, so nothing is",
+      "known to invoke it. .antigravity/instructions.md therefore also tells",
+      "the agent to run it by hand before writing a generated diff."
+    ],
     "before_apply_diff": {
       "description": "Screen a generated diff through the local governance interceptor before it is written to disk.",
       "command": "uv run python -c \"import sys,asyncio;from hybrid_rag.governance.middleware import GovernanceMiddleware;from hybrid_rag.governance.guardrails import Direction;d=sys.stdin.read();e,_=asyncio.run(GovernanceMiddleware().inspect(d,direction=Direction.EGRESS));print(e.block_reason or 'cleared');sys.exit(0 if e.cleared else 1)\"",

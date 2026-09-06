@@ -27,8 +27,10 @@ restored into the audit ledger, and it is not restored into the training set.
 
 from __future__ import annotations
 
+import logging
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -57,6 +59,8 @@ from hybrid_rag.llm.opus_client import FrontierClient, OpusUnavailable
 from hybrid_rag.rag.local_rag import LocalRAGEngine, RetrievalResult
 from hybrid_rag.routing.budget import Priority
 from hybrid_rag.routing.routing_gate import RetrievalSignal, RoutingDecision, RoutingGate, Tier
+
+_log = logging.getLogger(__name__)
 
 _LOCAL_SYSTEM = (
     "You are a grounded technical assistant. Answer only from the provided "
@@ -91,6 +95,23 @@ Question: {question}
 Answer:"""
 
 
+class Stage(StrEnum):
+    """The pipeline phases a caller may want to display while they run.
+
+    Emitted by `execute()` through an optional callback so a UI can show what
+    is *actually* happening rather than animating a plausible-looking sequence
+    on a timer. A progress indicator that is not driven by real events is a
+    fabricated measurement wearing a spinner.
+    """
+
+    GOVERNANCE = "governance"
+    RETRIEVAL = "retrieval"
+    GENERATION = "generation"
+
+
+StageCallback = Callable[[Stage], None]
+
+
 class Outcome(StrEnum):
     LOCAL = "local"
     LOCAL_DEGRADED = "local_degraded"
@@ -106,6 +127,10 @@ class ExecutionResult(BaseModel):
     outcome: Outcome
     answer: str = ""
     reason: str = ""
+    # The ledger row this execution produced. It is the chain hash, so it is
+    # also the handle a user needs to find this exact turn in the audit trail
+    # and check that it has not been rewritten since.
+    audit_hash: str | None = None
 
     retrieval_confidence: float = 0.0
     routing_stage: str | None = None
@@ -115,11 +140,21 @@ class ExecutionResult(BaseModel):
     # air-gapped host needs to see connectivity, not infer it from prose.
     frontier_unavailable: bool = False
 
+    # Governance outcome, carried so a caller can display it without re-running
+    # the scan. Counts only: the entities themselves stay inside the scrubber,
+    # per rule 10.
+    pii_status: PIIStatus = PIIStatus.NOT_EVALUATED
+    pii_entities: int = 0
+
     local_tokens_in: int = 0
     local_tokens_out: int = 0
     cloud_tokens_in: int = 0
     cloud_tokens_out: int = 0
     latency_ms: float = 0.0
+    # Model time only. `latency_ms` includes governance, retrieval and rerank,
+    # so dividing tokens by it understates throughput by roughly the retrieval
+    # cost - which for a short answer is most of the wall clock.
+    generation_ms: float = 0.0
 
     sources: list[SourceAttribution] = Field(default_factory=list)
     quarantined_chunks: int = 0
@@ -181,13 +216,35 @@ class AgentOrchestrator:
         *,
         trace_id: str | None = None,
         priority: Priority = Priority.INTERACTIVE,
+        on_stage: StageCallback | None = None,
     ) -> ExecutionResult:
-        """Run one request end to end. Never raises; failures become results."""
+        """Run one request end to end. Never raises; failures become results.
+
+        `on_stage` is called as each phase begins. It is fired inside the
+        pipeline rather than estimated outside it, so a UI driven by it shows
+        the stage the request is really in.
+
+        A callback that raises is logged and ignored. It has to be: this
+        function turns every exception into `Outcome.FAILED`, so letting a
+        display bug out would report a broken spinner as a failed request -
+        with the renderer's traceback standing where the routing reason should
+        be. Presentation cannot be allowed to change the outcome it is
+        presenting.
+        """
         trace_id = trace_id or str(uuid.uuid4())
         t0 = time.perf_counter()
         decision: RoutingDecision | None = None
 
+        def stage(phase: Stage) -> None:
+            if on_stage is None:
+                return
+            try:
+                on_stage(phase)
+            except Exception:
+                _log.exception("stage callback failed at %s; continuing", phase)
+
         try:
+            stage(Stage.GOVERNANCE)
             envelope, scrub = await self._governance.ingress(query, trace_id=trace_id)
             if not envelope.cleared:
                 return self._finish(
@@ -200,6 +257,7 @@ class AgentOrchestrator:
                     envelope,
                 )
 
+            stage(Stage.RETRIEVAL)
             retrieval = await self._rag.query(envelope.safe_text, trace_id=trace_id)
             context = await self._screen_context(retrieval, trace_id)
 
@@ -225,6 +283,7 @@ class AgentOrchestrator:
                 quarantined_chunks=context.quarantined,
             )
 
+            stage(Stage.GENERATION)
             if decision.tier is Tier.OPUS:
                 await self._execute_frontier(result, decision, envelope, scrub, context)
             else:
@@ -295,12 +354,15 @@ class AgentOrchestrator:
             context=context.text or "(no local context retrieved)",
             question=envelope.safe_text,
         )
+        gen_t0 = time.perf_counter()
         try:
             completion = await self._local.generate(prompt, system=_LOCAL_SYSTEM)
         except LocalInferenceError as exc:
+            result.generation_ms = (time.perf_counter() - gen_t0) * 1000.0
             result.outcome = Outcome.FAILED
             result.reason = _safe_reason(f"local generation failed: {exc}")
             return
+        result.generation_ms = (time.perf_counter() - gen_t0) * 1000.0
 
         result.local_tokens_in = completion.tokens_in
         result.local_tokens_out = completion.tokens_out
@@ -343,6 +405,7 @@ class AgentOrchestrator:
             await self._execute_local(result, decision, envelope, scrub, context)
             return
 
+        gen_t0 = time.perf_counter()
         try:
             async with self._gate.escalation(decision) as spend:
                 completion = await self._frontier.complete(
@@ -361,6 +424,7 @@ class AgentOrchestrator:
             await self._execute_local(result, decision, envelope, scrub, context)
             return
 
+        result.generation_ms = (time.perf_counter() - gen_t0) * 1000.0
         result.cloud_tokens_in = completion.tokens_in
         result.cloud_tokens_out = completion.tokens_out
 
@@ -418,6 +482,9 @@ class AgentOrchestrator:
         self, result: ExecutionResult, t0: float, envelope: GovernanceEnvelope | None
     ) -> ExecutionResult:
         result.latency_ms = (time.perf_counter() - t0) * 1000.0
+        if envelope is not None:
+            result.pii_status = envelope.pii_status
+            result.pii_entities = sum(envelope.pii_counts.values())
 
         flags = [f"outcome:{result.outcome}"]
         if result.degraded_reason:
@@ -431,7 +498,7 @@ class AgentOrchestrator:
         if envelope is not None:
             flags.extend(envelope.compliance_flags())
 
-        self._audit.emit(
+        emitted = self._audit.emit(
             AuditRecord(
                 trace_id=result.trace_id,
                 stage="orchestration",
@@ -467,4 +534,5 @@ class AgentOrchestrator:
                 },
             )
         )
+        result.audit_hash = emitted.record_hash
         return result

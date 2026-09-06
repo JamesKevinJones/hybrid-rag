@@ -43,7 +43,9 @@ local model provably cannot do, and be able to prove afterwards which was which.
 src/hybrid_rag/
   config.py          # every tunable; nothing else reads os.environ
   container.py       # composition root - the ONLY place backends are constructed
-  cli.py             # thin operator commands over the container
+  cli.py             # thin operator commands; bare invocation opens the TUI
+  ui/
+    tui.py           # Module 6 - interactive terminal UI. Presentation only.
   routing/
     routing_gate.py  # Module 1a - the token boundary
     budget.py        # rolling-window ledger, holds a hard veto over the gate
@@ -68,6 +70,7 @@ src/hybrid_rag/
     promotion_gate.py # Module 5c - GGUF intake, 3 criteria, opt-in alias update
 scripts/
   train_colab.py     # Module 4b - runs on Colab, imports nothing from this package
+  verify_mcp_clients.py # real stdio JSON-RPC handshake against the MCP server
   wslconfig.template # WSL2 memory caps; NOT installed automatically
   install-wslconfig.ps1 # one-liner; machine-wide, shared with Docker-in-WSL
 ```
@@ -103,10 +106,19 @@ scripts/
     against this repo's own docs - that is circular. Re-run
     `scripts/calibrate_thresholds.py` after any reranker or embedder change.
 13. Run everything in `docs/VERIFY.md` before reporting work done.
+14. Nothing in `ui/` decides, spends or logs. It renders what the pipeline
+    produced. If a display needs a number the pipeline does not produce, add it
+    to `ExecutionResult` - do not compute a plausible one in the renderer.
+15. Every value the UI shows is live, cited, or absent. A recorded benchmark is
+    labelled with the decision that recorded it. "Not measured" is a valid
+    status; a placeholder that looks like a reading is not. See decision 29.
 
 ## IDE integration
 
 - `.vscode/` - tasks, pinned interpreter, `mcp.json`. VS Code is installed here.
+  The server launches via `${workspaceFolder}/.venv/Scripts/python.exe -m
+  hybrid_rag.mcp_servers.server`. NOT `src.hybrid_rag...` - that form resolves
+  only from the repo root and imports the package twice when it does. Decision 30.
 - `.antigravity/instructions.md` - the load-bearing Antigravity file; plain
   markdown any agent can read. `antigravity.json` beside it has an UNVERIFIED
   schema (agy 1.1.12 exposes no `mcp` subcommand) and says so in the file.
@@ -115,7 +127,12 @@ scripts/
 The MCP server registers as **`hybrid-rag`** with tools `local_rag_search`,
 `check_budget_status`, `verify_audit_ledger`. Earlier drafts said
 `LocalGovEngine` and `search_local_knowledge`; those names do not exist and
-calling them fails.
+calling them fails. They are frozen by decision 28 - a mismatch is a stale
+client config, not a rename to apply.
+
+Check the whole chain with `uv run python scripts/verify_mcp_clients.py`: it
+runs a real stdio JSON-RPC session against the server from a foreign working
+directory and validates both editor configs on the way.
 
 ## Working with the token budget
 

@@ -18,6 +18,7 @@ call and a 3 second one.
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from typing import Annotated, Any
 
@@ -73,7 +74,13 @@ class Passage(BaseModel):
 class SearchResult(BaseModel):
     query: str
     confidence: float = Field(
-        description="Calibrated retrieval confidence. Below 0.78 the local answer is weak."
+        description=(
+            "Calibrated retrieval confidence in [0, 1]. Read `would_escalate` "
+            "rather than comparing this against a remembered threshold: the "
+            "threshold is a property of the corpus and the reranker, it is "
+            "re-derived by scripts/calibrate_thresholds.py, and it has already "
+            "moved once (0.78 -> 0.35, decision 27)."
+        )
     )
     would_escalate: bool = Field(
         description="True if the routing gate would send this to a frontier model."
@@ -209,6 +216,12 @@ async def verify_audit_ledger() -> LedgerStatus:
 
 
 def main() -> None:
+    # Claim the root logger before FlashRank's basicConfig(INFO) does. An MCP
+    # client reads stdout as a JSON-RPC stream; a dependency that decides to
+    # log at INFO is one print() away from corrupting it.
+    logging.basicConfig(
+        level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s", stream=sys.stderr
+    )
     if "--http" in sys.argv:
         mcp.run(transport="http", host="127.0.0.1", port=8765)
     else:

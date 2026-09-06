@@ -7,6 +7,8 @@ logic lives in the modules, not here.
 from __future__ import annotations
 
 import asyncio
+import logging
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -21,9 +23,62 @@ from hybrid_rag.eval.promotion_gate import GgufArtifact
 from hybrid_rag.governance.audit import JsonlAuditSink
 from hybrid_rag.governance.guardrails import Direction
 from hybrid_rag.routing.routing_gate import RetrievalSignal
+from hybrid_rag.ui.tui import run_tui
 
-app = typer.Typer(add_completion=False, help="Local-first tiered RAG operator commands.")
+app = typer.Typer(
+    add_completion=False,
+    help="Local-first tiered RAG. Run with no arguments for the interactive UI.",
+    invoke_without_command=True,
+)
 console = Console()
+
+
+def configure_logging() -> None:
+    """Claim the root logger before a dependency configures it for us.
+
+    FlashRank calls `logging.basicConfig(level=INFO)` when its ranker is built,
+    which turns on every INFO logger in the process - including httpx, which
+    then prints a line per Ollama request straight through whatever is on
+    screen. `basicConfig` is a no-op once the root logger already has a
+    handler, so claiming it first at the entry point is enough to stop that,
+    and it leaves an explicit place to raise the level when debugging.
+
+    An application may configure logging; a library may not. This is the
+    application.
+    """
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s",
+                        stream=sys.stderr)
+
+
+@app.callback()
+def main(
+    ctx: typer.Context,
+    history_file: Annotated[
+        str | None,
+        typer.Option(
+            "--history-file",
+            help=(
+                "Persist prompt history to this path. Off by default: a prompt "
+                "can hold the personal data the scrubber exists to contain, and "
+                "the file is plaintext."
+            ),
+        ),
+    ] = None,
+) -> None:
+    """Launch the TUI when no subcommand is given."""
+    configure_logging()
+    if ctx.invoked_subcommand is None:
+        run_tui(history_path=history_file)
+
+
+@app.command()
+def chat(
+    history_file: Annotated[
+        str | None, typer.Option(help="Persist prompt history to this path.")
+    ] = None,
+) -> None:
+    """Open the interactive UI explicitly. Same thing as running with no arguments."""
+    run_tui(history_path=history_file)
 
 
 @app.command()

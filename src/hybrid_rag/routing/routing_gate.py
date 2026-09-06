@@ -265,6 +265,17 @@ class RoutingGate:
         self._slm_max_tokens = slm_max_tokens
         self._agent_id = agent_id
 
+    def set_slm_model(self, model: str | None) -> None:
+        """Re-point tier 3's voter at another local model.
+
+        The gate holds the model NAME, resolved once at construction, not the
+        settings object. So swapping the resident generator without calling
+        this leaves the waterfall voting with a model that may no longer be
+        loaded - which does not fail loudly, it just adds a cold load to the
+        one stage of routing that is supposed to be cheap.
+        """
+        self._slm_model = model
+
     async def decide(
         self,
         query: str,

@@ -10,8 +10,12 @@ uv run mypy
 uv run pytest
 ```
 
-Expected: `All checks passed!`, `Success: no issues found in 26 source files`,
-`282 passed`.
+Expected: `All checks passed!`, `Success: no issues found in 28 source files`,
+`331 passed`.
+
+Note `ruff check src tests` misses `scripts/`. Run `ruff check src tests scripts`
+if you touched anything there - `verify_mcp_clients.py` lives in it and is
+imported by the test suite.
 
 ## Wiring smoke test
 
@@ -73,7 +77,70 @@ uv run python -m hybrid_rag.mcp_servers.server --http
 ```
 
 The unit suite covers all three tools through a real in-process FastMCP client,
-so the practical check is just `uv run pytest tests/unit/test_mcp_server.py`.
+so the tool logic check is `uv run pytest tests/unit/test_mcp_server.py`.
+
+That is only half of it. An in-process client never spawns an interpreter, so
+it cannot see a broken launch command - which is the thing that actually fails
+in an editor. For that:
+
+```bash
+uv run python scripts/verify_mcp_clients.py
+```
+
+14 checks. It validates both editor configs, then starts the server as a real
+subprocess **from a working directory that is not the repo root** and speaks
+newline-delimited JSON-RPC to it: `initialize`, `notifications/initialized`,
+`tools/list`, `tools/call`. Expect `OK - the server answers over stdio` and
+exit 0.
+
+The foreign working directory is the point. `-m src.hybrid_rag.mcp_servers.server`
+passes from the repo root and fails everywhere else; `-m hybrid_rag.mcp_servers.server`
+works from anywhere. See decision 30.
+
+`--json` gives machine-readable output. `tests/unit/test_mcp_clients.py` asserts
+the harness rejects the `src.` form, a missing interpreter and a renamed server,
+because a verifier that cannot fail verifies nothing.
+
+## Antigravity pre-diff hook
+
+The hook command in `.antigravity/antigravity.json` is verified; whether `agy`
+ever calls it is not. Check the command by hand:
+
+```bash
+git diff | uv run python -c "import sys,asyncio;from hybrid_rag.governance.middleware import GovernanceMiddleware;from hybrid_rag.governance.guardrails import Direction;d=sys.stdin.read();e,_=asyncio.run(GovernanceMiddleware().inspect(d,direction=Direction.EGRESS));print(e.block_reason or 'cleared');sys.exit(0 if e.cleared else 1)"
+```
+
+An ordinary diff prints `cleared` and exits 0. One carrying a key prints
+`live credential material detected (ANTHROPIC_API_KEY)` and exits 1.
+
+## Terminal UI
+
+```bash
+uv run hybrid-rag
+```
+
+Needs a real Windows console. PowerShell, Windows Terminal and cmd.exe work;
+Git Bash's MinTTY does not, and neither does a redirected or piped shell - both
+print an actionable message instead of a Win32 traceback. `start_rag.bat`
+launches it from Explorer.
+
+Check by eye, in this order:
+
+- The banner renders block glyphs. If it falls back to ASCII, the console
+  encoding cannot hold them - that is the fallback working, not a bug.
+- `Model` says `resident, 100% GPU, 2.6 GB` after the first query, and
+  `not resident (loads on first query)` before it. If it says
+  `residency not measured`, `ollama ps` did not answer - which is a different
+  fact and is deliberately worded as one.
+- `Air-gap` reads `OFFLINE ARMED` with no key configured.
+- `/doctor` lists exactly three resident models totalling ~4.1 GB, all
+  `100% GPU`. A fourth entry or a CPU split means the envelope has been broken.
+- `/model code` switches the generator AND the tier-3 voter. Confirm with
+  `/doctor` that `generator` changed.
+- The badge under an answer shows `tok/s` only when generation was timed. On a
+  blocked or failed turn it is absent, not zero.
+
+Everything except the eye checks is covered by `tests/unit/test_tui.py`.
 
 ## Hardware invariants
 

@@ -52,7 +52,8 @@ TEMPLATE_HEADER = """# Local environment. GITIGNORED - never commit this file.
 def is_git_ignored(path: Path) -> bool | None:
     """Ask git, not the .gitignore text. None if git cannot answer."""
     try:
-        completed = subprocess.run(  # noqa: S603 - fixed argv, no user input
+        # Fixed argv; `path` is interpolated as an argument, never as shell text.
+        completed = subprocess.run(
             ["git", "check-ignore", "-q", str(path)],
             cwd=REPO_ROOT,
             capture_output=True,

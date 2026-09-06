@@ -1,16 +1,47 @@
 # State
 
-_Updated 2026-09-05. **SESSION CLOSED** - see 'Where to pick up' at the end._
+_Updated 2026-09-06. See 'Where to pick up' at the end._
 
 ## Where we stopped
 
-Modules 1 through 5 are built, calibrated against external data, and running.
-282 tests, ruff clean, mypy strict clean. Six commits on `main`.
+Modules 1 through 6 are built, calibrated against external data, and running.
+331 tests, ruff clean, mypy strict clean, tree clean.
 
 The system is **air-gapped by default and complete offline**. Level 2 is
 optional wiring, not a dependency.
 
-## Shipped this session
+## Shipped 2026-09-06 (Module 6 + MCP hardening)
+
+- **Terminal UI** at `src/hybrid_rag/ui/tui.py`. Bare `uv run hybrid-rag` opens
+  it; `start_rag.bat` launches it from Explorer. Chat loop over the same
+  `AgentOrchestrator.execute` path `ask` uses, so it adds no capability and
+  bypasses no gate. `/help /doctor /budget /audit /model /clear /exit`.
+- **Every displayed value is live, cited, or absent** (decision 29). Residency
+  from `ollama ps` at render time, budget from the ledger, confidence and
+  latency from the result object, ledger hash from the row that turn wrote.
+  The two benchmark figures on screen carry the decision that recorded them.
+- **Three orchestrator additions the UI needed**, added to the pipeline rather
+  than faked in the renderer: a `Stage` callback so the spinner is event-driven,
+  `generation_ms` so throughput is not diluted by retrieval, and `audit_hash` /
+  `pii_status` / `pii_entities` on `ExecutionResult`.
+- **`Container.switch_generator()`** re-points the generator AND the tier-3
+  voter, which held a snapshot of the name. Restricted to declared profiles:
+  the co-residency envelope was measured against ~3B Q4 weights and a 7B typed
+  at a prompt would spill to shared memory rather than fail.
+- **MCP launch command corrected** (decision 30). `-m src.hybrid_rag...` starts
+  from the repo root and nowhere else, and imports the package twice when it
+  does. Now `-m hybrid_rag.mcp_servers.server` via the venv interpreter.
+- **`scripts/verify_mcp_clients.py`** - 14 checks, real stdio JSON-RPC against
+  a subprocess started from a foreign working directory. Its own tests assert
+  it rejects the three regressions it exists to catch.
+- **Antigravity tool registry** in `instructions.md` with schemas dumped from
+  the running server, not written by hand.
+- Two defects found by running it: the `ollama ps` parser dropped half the
+  PROCESSOR column ("100%" instead of "100% GPU"), and FlashRank's
+  `basicConfig(INFO)` was turning on httpx request logging over the whole UI.
+  Both fixed; the second by claiming the root logger at the entry point.
+
+## Shipped 2026-09-05
 
 - **Budget caps set to deliberate under-estimates**: 25 messages / 400k tokens
   per 5h window, 250 weekly. Not the published Pro limits and not trying to be.
@@ -99,12 +130,20 @@ installing would overwrite a deliberate choice. Left for the user to decide.
 
 - `.vscode/` - tasks (MCP server, doctor, ollama ps, eval tests, full gate,
   recalibration, env setup), interpreter pinned to `.venv/Scripts/python.exe`,
-  and `mcp.json` pointing at the real server.
-- `.antigravity/instructions.md` - agent persona. Retrieval-first, egress only
-  through the routing gate, structured artifacts per turn.
+  and `mcp.json` launching `${workspaceFolder}/.venv/Scripts/python.exe -m
+  hybrid_rag.mcp_servers.server`. JSONC, and the comments explaining why that
+  module path are load-bearing - see decision 30.
+- `.antigravity/instructions.md` - agent persona plus a full tool registry:
+  launch command, exact input schemas (dumped from the running server) and
+  return shapes for all three tools. Retrieval-first, egress only through the
+  routing gate, structured artifacts per turn.
 - `.antigravity/antigravity.json` - **schema unverified.** agy 1.1.12 has no
   `mcp` subcommand and no discoverable project-config file. The values inside
-  are correct; the key names are a guess, and the file says so.
+  are correct; the key names are a guess, and the file says so. The
+  `before_apply_diff` hook COMMAND is verified - `cleared` / exit 0 on an
+  ordinary diff, `live credential material detected` / exit 1 on one carrying a
+  key - but nothing is known to invoke it, so `instructions.md` also tells the
+  agent to run it by hand.
 - **Cursor skipped - not installed.** Only a leftover `%APPDATA%\Cursor` cache
   directory; no executable anywhere on this machine.
 
@@ -132,8 +171,9 @@ Everything here needs no key and no network:
 2. **Anchor the audit chain off-machine.** It is unkeyed SHA-256 today - it
    detects accidents and casual edits, not an attacker who recomputes it.
    `governance/audit.py` states that threat model at the top.
-3. **Exercise the `code` generator profile.** `qwen2.5-coder:3b` is pulled and
-   measured co-resident at 3.7 GB, but nothing has been routed through it.
+3. **Exercise the `code` generator profile.** `/model code` in the TUI switches
+   to `qwen2.5-coder:3b` and the swap is tested, but no evaluation has compared
+   its answers against the `general` profile on the same cases.
 4. **Build an eval case set** against `data/calibration`. `evaluate` works with
    a local candidate on both sides; only the Opus baseline needs a key.
 
@@ -155,7 +195,9 @@ promotion gate - all four are built and waiting on it.
 uv run ruff check src tests && uv run mypy && uv run pytest
 ```
 
-286 tests, no network, no Ollama required. `docs/VERIFY.md` has the rest.
+331 tests, no network, no Ollama required. Add `scripts` to the ruff paths if
+you touched anything there. `docs/VERIFY.md` has the rest, including the
+by-eye checks for the TUI and `scripts/verify_mcp_clients.py` for MCP.
 
 ## Known gaps (all deliberate)
 
@@ -173,3 +215,9 @@ uv run ruff check src tests && uv run mypy && uv run pytest
   `note-unreviewed` annotation and nothing else.
 - `.antigravity/antigravity.json` has an unverified schema; the file says so.
 - Cursor config absent - Cursor is not installed on this machine.
+- The TUI needs a real Windows console. MinTTY (Git Bash) and any redirected or
+  piped shell cannot host it; both cases print an actionable message rather than
+  a Win32 traceback, but neither can run the UI.
+- Prompt history is in-memory unless `--history-file` is passed. A prompt can
+  hold exactly the data the scrubber exists to keep off disk, so persisting it
+  is opt-in.

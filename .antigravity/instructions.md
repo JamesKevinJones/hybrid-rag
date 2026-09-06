@@ -25,17 +25,87 @@ or reaching for outside knowledge, query the local index:
 local_rag_search(query="...", top_k=3)
 ```
 
-Three tools are available, all Level 0, none able to spend cloud tokens:
+## Tool registry
 
-| tool | use it for |
-|---|---|
-| `local_rag_search` | anything about this codebase or the indexed corpus |
-| `check_budget_status` | before planning work that will need the frontier tier |
-| `verify_audit_ledger` | confirming the governance trail is intact |
+Three tools, all Level 0, none able to spend cloud tokens. The schemas below
+were dumped from the running server, not written by hand, and
+`scripts/verify_mcp_clients.py` re-checks them against a live stdio session.
 
 **The server is registered as `hybrid-rag`.** If you have seen it called
 `LocalGovEngine`, or seen a tool called `search_local_knowledge`, those names
-are from an earlier draft and do not exist. Calling them fails.
+are from an earlier draft and do not exist. Calling them fails. The three names
+below are frozen - decision 28 records that renaming them was considered and
+rejected, so treat a mismatch as a stale client config, not as a bug to fix by
+renaming the server.
+
+### Launch
+
+```
+<repo>/.venv/Scripts/python.exe -m hybrid_rag.mcp_servers.server
+```
+
+stdio transport, newline-delimited JSON-RPC. Use the virtual environment's
+interpreter by path: the system Python here is 3.14 and this project pins
+`<3.13`. Use `hybrid_rag.mcp_servers.server`, never
+`src.hybrid_rag.mcp_servers.server` - the second form resolves only while the
+working directory is the repo root, and when it does resolve it loads this
+package twice under two names.
+
+### `local_rag_search`
+
+Search the local corpus. Runs fully offline.
+
+```json
+{
+  "type": "object",
+  "required": ["query"],
+  "properties": {
+    "query":  {"type": "string",  "description": "Natural-language question."},
+    "top_k":  {"type": "integer", "default": 3, "minimum": 1, "maximum": 20}
+  }
+}
+```
+
+Returns `{query, confidence, would_escalate, passages[], quarantined_count,
+latency_ms}`, where each passage is `{rank, score, doc_id, uri, text,
+quarantined, quarantine_rules[]}`.
+
+Read `would_escalate` rather than comparing `confidence` against a remembered
+number. The threshold is a property of the corpus and the cross-encoder, it is
+re-derived by `scripts/calibrate_thresholds.py`, and it has already moved once
+(0.78 to 0.35, decision 27).
+
+### `check_budget_status`
+
+Remaining Claude Pro capacity in the rolling window. Call it before planning
+work that needs the frontier tier. Takes no arguments.
+
+```json
+{"type": "object", "properties": {}}
+```
+
+Returns `{window_hours, messages_used, messages_limit, messages_remaining,
+tokens_used, tokens_limit, tokens_remaining, weekly_messages_used,
+weekly_messages_limit, open_reservations, minutes_to_window_reset, exhausted}`.
+
+`exhausted: true` means the gate will veto every escalation until the window
+rolls over. Those caps are deliberate under-estimates of the published limits,
+not a reading of the account.
+
+### `verify_audit_ledger`
+
+Re-walk the governance ledger's hash chain. Takes no arguments.
+
+```json
+{"type": "object", "properties": {}}
+```
+
+Returns `{path, intact, first_bad_line, records, detail}`. The chain is
+unkeyed SHA-256: it detects accidental damage and casual edits, not an attacker
+who recomputes the chain. `audit.py` says so in its threat model and so should
+you if you are asked what it proves.
+
+## Reading results
 
 ### Read the confidence, not just the passages
 
@@ -90,6 +160,22 @@ and this project pins `<3.13`, so a bare `python` is the wrong runtime.
 - `ollama cp` or `ollama rm`. Model promotion goes through
   `eval/promotion_gate.py`, which requires an explicit `apply=True`.
 - `git commit` or `git push`. Commits here are authored deliberately.
+
+## Before a generated diff is written
+
+`.antigravity/antigravity.json` declares a `before_apply_diff` hook that pipes
+the diff through the governance middleware on EGRESS and refuses it on a
+non-zero exit. The command is verified - it clears an ordinary diff and exits
+1 with `live credential material detected` on one carrying a key. What is NOT
+verified is that `agy` runs hooks at all; no hook mechanism was found in
+1.1.12. So run it yourself before writing a diff you generated:
+
+```
+git diff | uv run python -c "import sys,asyncio;from hybrid_rag.governance.middleware import GovernanceMiddleware;from hybrid_rag.governance.guardrails import Direction;d=sys.stdin.read();e,_=asyncio.run(GovernanceMiddleware().inspect(d,direction=Direction.EGRESS));print(e.block_reason or 'cleared');sys.exit(0 if e.cleared else 1)"
+```
+
+A generated diff is egress. It can carry a credential the model copied out of
+context, and it is about to be written to a file that may later be committed.
 
 ## Output shape
 
