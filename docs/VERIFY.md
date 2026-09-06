@@ -11,7 +11,7 @@ uv run pytest
 ```
 
 Expected: `All checks passed!`, `Success: no issues found in 28 source files`,
-`345 passed`.
+`392 passed`.
 
 Note `ruff check src tests` misses `scripts/`. Run `ruff check src tests scripts`
 if you touched anything there - `verify_mcp_clients.py` lives in it and is
@@ -312,3 +312,77 @@ Expect `outcome: blocked` and `local response refused on egress`. Note the
 ingress screen does NOT catch this one - it labels the prompt S8, which no
 longer refuses. The block comes from screening the answer. If this returns an
 answer, egress screening has regressed out of `_execute_local`.
+
+## Scaffolder
+
+The claim is that a generated project runs with no edits. Check it per kind -
+`tests/unit/test_scaffolder.py` runs a real `pytest` against one kind only, and
+the other two are covered by a compile check that would not catch a logic
+error.
+
+```bash
+uv run hybrid-rag scaffold demo-cli --kind cli --path .. --no-ingest
+uv run hybrid-rag scaffold demo-pygame --kind pygame --path .. --no-ingest
+uv run hybrid-rag scaffold demo-fastapi --kind fastapi --path .. --no-ingest
+```
+
+Then in each generated directory:
+
+```bash
+uv run pytest
+uv run ruff check src tests
+uv run mypy
+```
+
+Expect 7 / 6 / 7 tests passing and both linters clean. Recorded in decision 32.
+If any of them needs an edit first, the templates have drifted and the
+no-placeholder rule in `.github/copilot-instructions.md` is no longer true of
+the thing that ships beside it.
+
+### Auto-ingest
+
+Close the TUI first - embedded Qdrant is single-process, and with it open the
+command reports `indexing skipped` and exits 0 with the project still written.
+That degradation is intentional and is itself worth checking:
+
+```bash
+uv run hybrid-rag scaffold demo-cli --kind cli --path ..
+```
+
+Expect `indexed N chunks from ARCHITECTURE.md and README.md` (37 on a fresh
+`cli` scaffold). Then confirm the separation still holds - the point is that
+the new project became retrievable, NOT that confidence acquired a floor:
+
+```bash
+uv run hybrid-rag route "What does TaskService.complete raise when the identifier is unknown?"
+uv run hybrid-rag route "purple monkey dishwasher tax code"
+```
+
+Measured on a fresh `cli` scaffold: 0.7275 and 0.9891 for questions about the
+project, 0.0000 for both junk queries. The first two must clear 0.35 and route
+LOCAL; the junk must still score ~0 and escalate. If junk starts scoring above
+the threshold, ingest has polluted the signal the router escalates on and
+decision 27 needs re-deriving.
+
+Note `route` needs the generator resident for its tier-3 vote. With another
+profile already pinned, loading a second 3B pushes past the ~5.2 GB envelope
+and the command stalls rather than failing - check `ollama ps` before blaming
+the query.
+
+## Editor configuration
+
+```bash
+uv run python scripts/verify_mcp_clients.py
+```
+
+Validates `.vscode/mcp.json` (JSONC, comments stripped before parsing), the
+Antigravity tool names, and a real stdio JSON-RPC session started from a
+foreign working directory. Ends with `OK - the server answers over stdio`.
+
+`.vscode/tasks.json` is strict JSON and must parse; its `dependsOn` labels and
+`${input:...}` references must all resolve, or VS Code fails the task silently
+at run time rather than at load:
+
+```bash
+uv run python -c "import json,re,pathlib; t=json.loads(pathlib.Path('.vscode/tasks.json').read_text(encoding='utf-8')); labels={x['label'] for x in t['tasks']}; ids={i['id'] for i in t['inputs']}; used=set(re.findall(r'\$\{input:(\w+)\}', json.dumps(t))); agg=next(x for x in t['tasks'] if x.get('dependsOn')); assert set(agg['dependsOn'])<=labels and used<=ids; print('tasks.json OK')"
+```

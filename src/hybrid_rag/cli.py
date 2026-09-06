@@ -23,6 +23,12 @@ from hybrid_rag.eval.promotion_gate import GgufArtifact
 from hybrid_rag.governance.audit import JsonlAuditSink
 from hybrid_rag.governance.guardrails import Direction
 from hybrid_rag.routing.routing_gate import RetrievalSignal
+from hybrid_rag.scaffolder import (
+    ProjectKind,
+    build_scaffold,
+    validate_project_name,
+    write_scaffold,
+)
 from hybrid_rag.ui.tui import run_tui
 
 app = typer.Typer(
@@ -138,6 +144,90 @@ def ingest(
             console.print(f"indexed [green]{written}[/] chunks from {len(paths)} files")
 
     asyncio.run(_run())
+
+
+def _prompt_for_kind() -> ProjectKind:
+    """Ask, when `--kind` was not given. Accepts a number or the name."""
+    kinds = list(ProjectKind)
+    console.print("Project type:")
+    for index, kind in enumerate(kinds, start=1):
+        console.print(f"  [bold]{index}[/]. {kind.label} [dim]({kind.value})[/]")
+    while True:
+        answer = typer.prompt("Choose", default="1").strip().lower()
+        if answer.isdigit() and 1 <= int(answer) <= len(kinds):
+            return kinds[int(answer) - 1]
+        for kind in kinds:
+            if answer == kind.value:
+                return kind
+        console.print("[yellow]pick a number from the list, or its short name[/]")
+
+
+@app.command()
+def scaffold(
+    name: Annotated[str, typer.Argument(help="Project name, e.g. my-app.")],
+    kind: Annotated[
+        ProjectKind | None, typer.Option(help="Skip the prompt and use this type.")
+    ] = None,
+    path: Annotated[
+        Path, typer.Option(help="Parent directory the project is created inside.")
+    ] = Path(),
+    ingest: Annotated[
+        bool, typer.Option(help="Index the new ARCHITECTURE.md so RAG can answer about it.")
+    ] = True,
+    force: Annotated[bool, typer.Option(help="Overwrite existing files.")] = False,
+) -> None:
+    """Generate a modular, running project skeleton and index its contract.
+
+    The generated project passes its own `pytest` with no edits. That is a
+    deliberate constraint: `.github/copilot-instructions.md` forbids agents
+    from emitting `pass` and `# TODO` placeholders, and a scaffolder that
+    emitted them would be teaching the opposite of the rule it ships beside.
+    """
+    chosen = kind or _prompt_for_kind()
+
+    # Validation, layout and writing share one handler. A rejected name is a
+    # user error with a one-line answer, not a stack trace - and the name is
+    # validated BEFORE it is joined to a path, so a traversing name never
+    # reaches `resolve()` at all.
+    try:
+        project = validate_project_name(name)
+        plan = build_scaffold(project, chosen, (path / project).resolve())
+        written = write_scaffold(plan, force=force)
+    except (FileExistsError, ValueError) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(2) from exc
+
+    console.print(f"scaffolded [green]{plan.kind.label}[/] at {plan.root}")
+    for target in written:
+        console.print(f"  [dim]{target.relative_to(plan.root)}[/]")
+
+    if not ingest:
+        console.print("[dim]not indexed (--no-ingest)[/]")
+        return
+
+    async def _index() -> int:
+        container = build_container()
+        async with container:
+            return await container.rag.ingest_paths(
+                [plan.architecture_path, plan.root / "README.md"]
+            )
+
+    try:
+        chunks = asyncio.run(_index())
+    except Exception as exc:  # the project is already on disk; indexing is the extra
+        console.print(f"[yellow]indexing skipped: {type(exc).__name__}: {exc}[/]")
+        console.print(
+            "[dim]the project was still created. Index it later with "
+            f"`hybrid-rag ingest {plan.root}`[/]"
+        )
+        return
+
+    console.print(f"indexed [green]{chunks}[/] chunks from ARCHITECTURE.md and README.md")
+    console.print(
+        "[dim]queries ABOUT this project now retrieve instead of scoring 0.00. "
+        "Unrelated queries still score near zero, which is the signal the "
+        "router escalates on - see decision 27.[/]"
+    )
 
 
 @app.command()

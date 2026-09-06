@@ -44,6 +44,7 @@ src/hybrid_rag/
   config.py          # every tunable; nothing else reads os.environ
   container.py       # composition root - the ONLY place backends are constructed
   cli.py             # thin operator commands; bare invocation opens the TUI
+  scaffolder.py      # Module 7 - project templates. Writes files, decides nothing.
   ui/
     tui.py           # Module 6 - interactive terminal UI. Presentation only.
   routing/
@@ -123,8 +124,33 @@ scripts/
     labelled with the decision that recorded it. "Not measured" is a valid
     status; a placeholder that looks like a reading is not. See decision 29.
 
+## Building new projects: the Architect-Worker pattern
+
+New features and whole applications are built in three stages, never in one
+turn. The full statement is in `.antigravity/instructions.md`; the short form:
+
+1. **Contract first.** `ARCHITECTURE.md` - directory tree, data schemas,
+   function and route contracts - before any implementation.
+2. **One file per turn**, under 150 lines, after querying `local_rag_search`
+   for the pattern the codebase already uses.
+3. **Test it the same turn.** `uv run pytest tests/`, output pasted. A file
+   without a passing test is not done.
+
+`uv run hybrid-rag scaffold <name> --kind cli|fastapi|pygame` emits Stage 1 and
+a running skeleton for it, then indexes the contract so `local_rag_search`
+answers about the new project instead of returning nothing.
+
+Generated projects pass `ruff`, `mypy --strict` and `pytest` with no edits, and
+contain no `pass` / `# TODO` / `NotImplementedError`. That is asserted by
+`tests/unit/test_scaffolder.py`, not just intended - a scaffolder that emitted
+placeholders would contradict the rule it ships beside in
+`.github/copilot-instructions.md`.
+
 ## IDE integration
 
+- `.github/copilot-instructions.md` - read natively by VS Code Copilot Agent
+  mode and by Cursor as a rules file. Configured but UNVERIFIED: Cursor is not
+  installed here and Agent mode has not been run against it.
 - `.vscode/` - tasks, pinned interpreter, `mcp.json`. VS Code is installed here.
   The server launches via `${workspaceFolder}/.venv/Scripts/python.exe -m
   hybrid_rag.mcp_servers.server`. NOT `src.hybrid_rag...` - that form resolves

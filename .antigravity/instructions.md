@@ -177,18 +177,93 @@ git diff | uv run python -c "import sys,asyncio;from hybrid_rag.governance.middl
 A generated diff is egress. It can carry a credential the model copied out of
 context, and it is about to be written to a file that may later be committed.
 
+## Building something new: the Architect-Worker pattern
+
+This applies whenever the task is a new feature or a whole application, not a
+one-line fix. It is a hard constraint, not a suggested style.
+
+**Do not generate a whole application in one turn.** A 600-line dump is one
+unverified claim. Nothing in it has been run, the parts cannot be checked
+independently, and when it fails the failure is somewhere in 600 lines. Three
+stages instead, each producing something checkable before the next begins.
+
+### Stage 1 - contract first
+
+Write `ARCHITECTURE.md` before any implementation. It states:
+
+- **Directory tree**, every file with its single responsibility on one line.
+- **Core data schemas** - the actual Pydantic models or TypeScript interfaces,
+  written out, not described.
+- **Contracts** - function signatures and what each raises; for HTTP, the route
+  table with method, path, body, success status and error statuses.
+
+Stop there and let it be read. A contract that arrives alongside its
+implementation was not a contract, it was a summary.
+
+`hybrid-rag scaffold <name>` emits exactly this file for three project types,
+and indexes it. Use it rather than writing the skeleton by hand.
+
+### Stage 2 - one file per turn
+
+Implement **exactly one file**, under 150 lines. Before writing it:
+
+```
+local_rag_search(query="<the pattern you are about to use>", top_k=3)
+```
+
+Query for the pattern, not the filename - "how are vector stores injected",
+not "local_rag.py". You are looking for what this codebase already decided so
+your file matches it. If `confidence` is below 0.35 the corpus does not cover
+it; say so and choose a convention deliberately rather than inventing one and
+presenting it as the house style.
+
+Boundaries the scaffold sets and you keep: `models.py` imports nothing from
+`service.py`; `service.py` imports nothing from `cli.py`; `service.py` does no
+IO at all. Anything non-deterministic - a clock, an RNG, a socket - is passed
+in as an argument. That is what makes Stage 3 possible without mocks.
+
+### Stage 3 - test the file you just wrote, this turn
+
+Every implementation file is followed immediately by `test_<module>.py` and an
+actual run:
+
+```
+uv run pytest tests/
+```
+
+Paste the output. Not "tests pass" - the command and what it printed. A file
+without a passing test is not done, and moving to the next file leaves two
+unverified files instead of one.
+
+**Never emit `pass`, `# TODO`, or `raise NotImplementedError` in a file you are
+calling finished.** A placeholder is an unverified claim wearing the shape of
+finished work, and it is worse than an empty file because it reads as complete
+in a diff.
+
+### When a stage fails
+
+Go back to the stage that produced the wrong thing, not forward. A failing test
+in Stage 3 usually means Stage 1 got the contract wrong; patching the
+implementation to satisfy a bad contract is how a codebase stops matching its
+own architecture document.
+
 ## Output shape
 
-Structure every substantive turn as three artifacts:
+Structure every substantive turn as three artifacts. All three, every time -
+the receipt is not optional decoration, it is the evidence the run was what it
+claims.
 
-**Task list** - what you intend to do, before doing it. Ordered, each item
-independently checkable.
+### 1. Goal and task breakdown
 
-**Verification diff** - what changed and the evidence it works. Not "tests
-pass" but the command and its output. A claim without a command behind it is
-an assumption.
+What you intend to do, before doing it. Ordered, each item independently
+checkable. Name the stage you are in.
 
-**Audit receipt** - what the turn cost and what it touched:
+### 2. Verification diff
+
+What changed and the evidence it works. Not "tests pass" but the command and
+its output. A claim without a command behind it is an assumption.
+
+### 3. Governance receipt
 
 ```
 tier:        local | opus | local_degraded
@@ -196,15 +271,27 @@ confidence:  <retrieval confidence, if a query was made>
 tools:       <MCP tools called>
 tokens:      local <in>+<out>  cloud <in>+<out>
 files:       <paths written>
+ledger:      <record_hash prefix from the run, or "no pipeline call this turn">
 ```
 
 `cloud 0+0` is the expected line. It is the project's thesis restated once per
 turn, and it is the number a reader should be able to check at a glance.
 
+The `ledger` line is the one that can be verified independently. Every
+`hybrid-rag ask` and every MCP tool call appends a hash-chained record; run
+`uv run hybrid-rag verify-ledger` and the chain either reconciles or names the
+line where it stops. If you did not touch the pipeline this turn, say so rather
+than inventing a hash - an unverifiable receipt is worse than no receipt,
+because it looks like evidence.
+
+
 ## When you are unsure
 
 Say so, and say what would resolve it. This repository has a documented habit
 of measurement overturning plausible assumptions - decisions 11, 15, 16, 23,
-24 and 27 in `docs/DECISIONS.md` are all cases where a reasonable-sounding
+24, 27 and 31 in `docs/DECISIONS.md` are all cases where a reasonable-sounding
 number turned out to be invented. An inferred number reads exactly like a
 measured one once it is written down, so label which one you are giving.
+
+That habit is why Stage 3 exists. The cheapest way to stop guessing about
+whether code works is to run it in the same turn you wrote it.

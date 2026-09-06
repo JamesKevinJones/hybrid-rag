@@ -5,7 +5,7 @@ _Updated 2026-09-06. See 'Where to pick up' at the end._
 ## Where we stopped
 
 Modules 1 through 6 are built, calibrated against external data, and running.
-345 tests, ruff clean, mypy strict clean, tree clean.
+392 tests, ruff clean, mypy strict clean, tree clean.
 
 The system is **air-gapped by default and complete offline**. Level 2 is
 optional wiring, not a dependency.
@@ -196,6 +196,56 @@ VS Code server can start - they fail with "Storage folder ... is already
 accessed by another instance". This is embedded mode working as designed, not
 a defect, and it disappears against a real Qdrant server. It is now a
 documented precondition in `docs/VERIFY.md`.
+
+## Shipped 2026-09-06 (Module 7: scaffolder + agent workflow)
+
+- **`src/hybrid_rag/scaffolder.py`** and `hybrid-rag scaffold <name>
+  [--kind cli|fastapi|pygame] [--path DIR] [--no-ingest] [--force]`. Pure core
+  (`build_scaffold` computes, `write_scaffold` writes), thin CLI over it.
+- **Generated projects run.** Verified per kind on a fresh directory, no edits:
+  cli 7 tests, pygame 6, fastapi 7, all passing, ruff and `mypy --strict` clean,
+  zero `pass` / `# TODO` / `NotImplementedError`. Decision 32.
+- **Auto-ingest measured, and the requested claim corrected.** 37 chunks from
+  ARCHITECTURE.md + README.md. Project questions score 0.7275 / 0.9891; junk
+  still scores 0.0000. The ask was "conf never 0.00" - that would have broken
+  the escalation signal decision 27 depends on, so the CLI reports what
+  indexing really does instead.
+- **Indexing failure never loses the project.** Embedded Qdrant is
+  single-process, so a scaffold run with the TUI open reports `indexing
+  skipped`, names the follow-up command, and exits 0 with files written.
+- **`.antigravity/instructions.md`** now carries the Architect-Worker pattern
+  (contract first, one file per turn under 150 lines, test in the same turn)
+  and a three-artifact output contract whose Governance Receipt includes a
+  ledger hash - verifiable via `verify-ledger`, or explicitly absent.
+- **`.github/copilot-instructions.md`** added for VS Code Agent mode and
+  Cursor. Configured but UNVERIFIED - Cursor is not installed here and Agent
+  mode has not been run against it. Says so in its own second paragraph.
+- **`.vscode/tasks.json`**: added `scaffold new module` (with a pickString for
+  kind); renamed the aggregate to `full verification gate` and the MCP check to
+  `verify MCP tooling` so the labels match what the instruction files cite.
+  `scripts/verify_mcp_clients.py` passes all 14 checks.
+
+### Security review caught a path traversal (decision 32a)
+
+`hybrid-rag scaffold "../../escaped"` wrote outside `--path`, and an absolute
+name wrote to the drive root - the package name was normalised, the directory
+name was not. Now refused by `validate_project_name()` before the path is
+joined, and re-checked against the resolved root inside `write_scaffold()`.
+Exits 2 with one line instead of a traceback. Six regression tests.
+
+This one matters more than "the user typed it" suggests: agents drive this CLI
+and can take a name from a retrieved passage.
+
+### Two things measured in passing
+
+- `ollama ps` during this work showed `qwen2.5-coder:3b` resident, not the
+  `general` default - the TUI's `/model` swap persists for the session, and the
+  4.1 GB figure in AGENTS.md is for the `general` profile. The `code` set
+  totals 3.7 GB, as documented.
+- `hybrid-rag route` **stalls** rather than erroring when it needs a generator
+  that is not resident and the envelope is already near full. Not fixed, not
+  investigated further; noted in docs/VERIFY.md so the next person checks
+  `ollama ps` before blaming the query.
 
 ## Where to pick up
 

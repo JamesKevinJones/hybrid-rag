@@ -6,8 +6,24 @@
       "type": "shell",
       "command": "uv run hybrid-rag",
       "problemMatcher": [],
-      "presentation": { "panel": "dedicated", "reveal": "always", "clear": true },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always",
+        "clear": true
+      },
       "detail": "Module 6. Needs a real console; VS Code's integrated terminal provides one."
+    },
+    {
+      "label": "hybrid-rag: scaffold new module",
+      "type": "shell",
+      "command": "uv run hybrid-rag scaffold ${input:projectName} --kind ${input:projectKind} --path ${input:projectParent}",
+      "problemMatcher": [],
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always",
+        "clear": true
+      },
+      "detail": "Generates a running project - typed source, passing tests, and the ARCHITECTURE.md that Stage 1 of the Architect-Worker pattern requires - then indexes the contract so local_rag_search can answer about it. Close the TUI first: embedded Qdrant is single-process."
     },
     {
       "label": "hybrid-rag: MCP server (stdio)",
@@ -15,7 +31,10 @@
       "command": "uv run python -m hybrid_rag.mcp_servers.server",
       "isBackground": true,
       "problemMatcher": [],
-      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      },
       "detail": "Level 0 only. None of its three tools can spend cloud tokens."
     },
     {
@@ -24,15 +43,22 @@
       "command": "uv run python -m hybrid_rag.mcp_servers.server --http",
       "isBackground": true,
       "problemMatcher": [],
-      "presentation": { "panel": "dedicated", "reveal": "always" },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      },
       "detail": "Same tools over streamable HTTP, for clients that cannot spawn stdio."
     },
     {
-      "label": "hybrid-rag: verify MCP clients",
+      "label": "hybrid-rag: verify MCP tooling",
       "type": "shell",
       "command": "uv run python scripts/verify_mcp_clients.py",
       "problemMatcher": [],
-      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "presentation": {
+        "panel": "shared",
+        "reveal": "always",
+        "clear": true
+      },
       "detail": "Real stdio JSON-RPC handshake from a foreign cwd. Validates both editor configs."
     },
     {
@@ -40,7 +66,11 @@
       "type": "shell",
       "command": "uv run hybrid-rag doctor",
       "problemMatcher": [],
-      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "presentation": {
+        "panel": "shared",
+        "reveal": "always",
+        "clear": true
+      },
       "detail": "Resolved models, index size, budget window. Expect keep_alive -1 and 2 workers."
     },
     {
@@ -48,7 +78,11 @@
       "type": "shell",
       "command": "ollama ps",
       "problemMatcher": [],
-      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "presentation": {
+        "panel": "shared",
+        "reveal": "always",
+        "clear": true
+      },
       "detail": "Three models co-resident. A fourth entry or a CPU split breaks the envelope."
     },
     {
@@ -56,45 +90,77 @@
       "type": "shell",
       "command": "uv run pytest tests/unit/test_eval_harness.py tests/unit/test_promotion_gate.py",
       "group": "test",
-      "problemMatcher": ["$python"],
-      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "problemMatcher": [
+        "$python"
+      ],
+      "presentation": {
+        "panel": "shared",
+        "reveal": "always",
+        "clear": true
+      },
       "detail": "No Ollama, no index, no network."
     },
     {
       "label": "gate: ruff",
       "type": "shell",
       "command": "uv run ruff check src tests scripts",
-      "problemMatcher": ["$python"],
-      "presentation": { "panel": "shared", "reveal": "always" }
+      "problemMatcher": [
+        "$python"
+      ],
+      "presentation": {
+        "panel": "shared",
+        "reveal": "always"
+      }
     },
     {
       "label": "gate: mypy",
       "type": "shell",
       "command": "uv run mypy",
-      "problemMatcher": ["$python"],
-      "presentation": { "panel": "shared", "reveal": "always" }
+      "problemMatcher": [
+        "$python"
+      ],
+      "presentation": {
+        "panel": "shared",
+        "reveal": "always"
+      }
     },
     {
       "label": "gate: pytest",
       "type": "shell",
       "command": "uv run pytest",
-      "problemMatcher": ["$python"],
-      "presentation": { "panel": "shared", "reveal": "always" }
+      "problemMatcher": [
+        "$python"
+      ],
+      "presentation": {
+        "panel": "shared",
+        "reveal": "always"
+      }
     },
     {
-      "label": "hybrid-rag: full gate (ruff + mypy + pytest)",
+      "label": "hybrid-rag: full verification gate",
       "dependsOrder": "sequence",
-      "dependsOn": ["gate: ruff", "gate: mypy", "gate: pytest"],
-      "group": { "kind": "test", "isDefault": true },
+      "dependsOn": [
+        "gate: ruff",
+        "gate: mypy",
+        "gate: pytest"
+      ],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
       "problemMatcher": [],
-      "detail": "Everything docs/VERIFY.md requires. Sequenced as three tasks rather than chained with '&&', which Windows PowerShell 5.1 cannot parse."
+      "detail": "ruff check, then mypy --strict, then pytest - everything docs/VERIFY.md requires. Sequenced as three dependent tasks rather than chained with '&&', which Windows PowerShell 5.1 cannot parse."
     },
     {
       "label": "hybrid-rag: recalibrate thresholds",
       "type": "shell",
       "command": "uv run python scripts/calibrate_thresholds.py",
       "problemMatcher": [],
-      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "presentation": {
+        "panel": "shared",
+        "reveal": "always",
+        "clear": true
+      },
       "detail": "Mandatory after any reranker or embedder change. Needs data/calibration."
     },
     {
@@ -102,8 +168,36 @@
       "type": "shell",
       "command": "uv run python scripts/setup_env.py",
       "problemMatcher": [],
-      "presentation": { "panel": "shared", "reveal": "always", "clear": true },
+      "presentation": {
+        "panel": "shared",
+        "reveal": "always",
+        "clear": true
+      },
       "detail": "Creates a gitignored .env from the example. Never overwrites an existing one."
+    }
+  ],
+  "inputs": [
+    {
+      "id": "projectName",
+      "type": "promptString",
+      "description": "Project name (my-app becomes package my_app)"
+    },
+    {
+      "id": "projectKind",
+      "type": "pickString",
+      "description": "Project type",
+      "options": [
+        "cli",
+        "fastapi",
+        "pygame"
+      ],
+      "default": "cli"
+    },
+    {
+      "id": "projectParent",
+      "type": "promptString",
+      "description": "Parent directory to create it in",
+      "default": ".."
     }
   ]
 }

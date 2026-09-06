@@ -679,3 +679,128 @@ untrusted submitters that is an acceptable trade against a false-positive rate
 that was refusing ordinary work. It would not be acceptable on a shared or
 network-exposed deployment, and if this ever becomes one, S8 should go back
 into `blocking_hazards`.
+
+## 32. The scaffolder is held to the rule it ships beside
+
+`.github/copilot-instructions.md` tells agents never to emit `pass`, `# TODO`
+or `raise NotImplementedError` in a file they call finished. A scaffolder that
+generated those would be the loudest possible counter-example, sitting in the
+same repository, read first by every agent looking for the house style.
+
+So the generated projects run. All three kinds pass `ruff`, `mypy --strict` and
+their own `pytest` on a fresh directory with no edits - verified per kind:
+
+| kind | tests | ruff | mypy --strict |
+|---|---|---|---|
+| `cli` | 7 passed | clean | 4 files clean |
+| `pygame` | 6 passed | clean | 4 files clean |
+| `fastapi` | 7 passed | clean | 4 files clean |
+
+`tests/unit/test_scaffolder.py` keeps it that way: a placeholder scan over
+generated source, a bare-`pass` scan, a sentinel-substitution check, a
+`compileall` pass, and one real subprocess `pytest` run against a generated
+project. The compile check is not redundant with the others. Every template is
+Python source embedded in a Python string, and three separate bugs in this
+session came from exactly that shape - an escape that became a literal newline
+in transit and silently split a string. Reading the template does not catch it;
+compiling does.
+
+The placeholder scan is scoped to `.py` files, which took one iteration to get
+right. The first version failed on all three kinds because the generated README
+*states* the rule, and stating a prohibition requires naming the thing
+prohibited. A scan that cannot distinguish documentation from an instance would
+force the docs to talk around their own subject.
+
+### The service layer is pure, and that is what makes Stage 3 possible
+
+Every kind splits `models.py` (shapes), `service.py` (logic, no IO) and
+`cli.py` (parsing and output). `service.py` imports no framework, opens no
+socket, touches no clock; anything non-deterministic is injected. The pygame
+kind is the clearest case - the collision rules have tests that run in CI
+because `service.py` imports no pygame and needs no display.
+
+That is not style. It is the precondition for "test the file you just wrote in
+the same turn". Logic that can only be exercised through a framework cannot be
+verified the turn it is written, and the Architect-Worker pattern collapses
+into the single-shot generation it exists to prevent.
+
+### What auto-ingest actually does
+
+The request was to index the scaffold "so `conf` is never 0.00 during
+subsequent RAG queries." Indexing cannot do that, and it must not.
+
+A confidence of 0.00 on an unrelated query is the system working. Decision 27
+measured the separation the router depends on: answerable queries score at
+least 0.4984, unanswerable ones at most 0.0028. If ingest guaranteed a non-zero
+floor, escalation would lose the signal it reads, and every junk query would
+look answerable.
+
+What ingest does do is make queries *about the new project* retrievable, which
+is the real problem - asking about a project the index has never seen returns
+nothing, and that reads like a broken retriever rather than an empty corpus.
+
+Measured on a fresh `cli` scaffold, 37 chunks from `ARCHITECTURE.md` and
+`README.md`, threshold 0.35:
+
+| query | confidence | routes |
+|---|---|---|
+| "What does TaskService.complete raise when the identifier is unknown?" | 0.7275 | LOCAL |
+| "Which module holds the logic and does no IO?" | 0.9891 | LOCAL |
+| "purple monkey dishwasher tax code" | 0.0000 | escalate |
+| "flibbertigibbet quantum marmalade" | 0.0000 | escalate |
+
+That is the shape to want. The new project is answerable; junk still reads as
+0.0000 and still escalates. Had ingest produced the requested "never 0.00", the
+bottom two rows would have moved up and the router would have lost the only
+signal it has. The CLI reports it in those terms rather than promising a floor
+it cannot hold and should not want.
+
+### Indexing failure does not lose the project
+
+Embedded Qdrant is single-process, so a scaffold run while the TUI is open
+cannot index. The files are already written by then, so the command reports the
+skip, names the follow-up (`hybrid-rag ingest <path>`), and exits 0. Losing a
+generated project because an optional index was locked would be a bad trade,
+and `write_scaffold` checks every target before writing any of them for the
+same reason - a half-written scaffold is neither the old directory nor the new
+one.
+
+### 32a. The security review found a path traversal in the scaffolder
+
+Caught by `/security-review` on this module's own diff, before commit.
+
+`build_scaffold` normalised the *package* name. The CLI built the *directory*
+from the raw one:
+
+```python
+plan = build_scaffold(name, chosen, (path / name).resolve())
+```
+
+So `../../escaped` normalised to the entirely innocent package `escaped` while
+the directory resolved two levels above the requested parent. Measured before
+the fix:
+
+| name | package | root | inside --path |
+|---|---|---|---|
+| `my-app` | `my_app` | `<parent>/my-app` | yes |
+| `../../escaped` | `escaped` | `<parent>/../../escaped` | **no** |
+| `/abs/rooted` | `abs_rooted` | `C:\abs\rooted` | **no** |
+
+Two mitigations, because one of them is at the wrong layer to be sufficient:
+
+- `validate_project_name()` refuses anything that is not a single relative
+  directory component, and the CLI calls it **before** joining to a path, so a
+  traversing name never reaches `resolve()`.
+- `write_scaffold()` re-checks every target against the resolved root and
+  raises. `Scaffold` is a plain dataclass and can be hand-built, and this is
+  the boundary that actually touches the disk.
+
+"The user typed it" is not the whole threat model. Agents drive this CLI, and
+an agent can take a project name out of a retrieved passage - which is the
+untrusted-input path the rest of this project exists to contain. A scaffolder
+that writes wherever the name points is a file-write primitive reachable from
+corpus text.
+
+Also fixed while there: the `ValueError` was raised outside the CLI's `try`, so
+a rejected name printed a traceback. Validation, layout and writing now share
+one handler and a rejected name exits 2 with a single line.
