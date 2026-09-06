@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
+from hybrid_rag.config import (
+    DEFAULT_BLOCKING_HAZARDS,
+    LLAMA_GUARD_HAZARDS,
+    OllamaSettings,
+)
 from hybrid_rag.governance.audit import GuardrailVerdict, PIIStatus
 from hybrid_rag.governance.guardrails import (
     Direction,
@@ -352,3 +358,120 @@ async def test_the_classifier_directions_are_configurable(generator) -> None:
     guard = LlamaGuardGuardrail(generator, directions=frozenset({Direction.CONTEXT}))
     assert (await guard.check("x", Direction.CONTEXT)).verdict is GuardrailVerdict.DENY
     assert (await guard.check("x", Direction.INGRESS)).verdict is GuardrailVerdict.ALLOW
+
+
+# ------------------------------------------------- llama guard hazard scoping
+#
+# Regression cover for decision 31. The prompt that exposed this asked for a
+# "Pygame implementation of a Reptile Game" with a full requirements list;
+# llama-guard3:1b returned `unsafe\nS8` on it three times out of three, while
+# the identical request naming Snake came back safe. A category that flips on
+# what you call the program cannot be allowed to refuse the request.
+
+
+async def test_non_blocking_hazard_is_flagged_but_allowed(generator) -> None:
+    generator.default = "unsafe\nS8"
+    guard = LlamaGuardGuardrail(generator, blocking_hazards=DEFAULT_BLOCKING_HAZARDS)
+
+    result = await guard.check("implement a Reptile Game in Pygame", Direction.INGRESS)
+
+    assert result.verdict is GuardrailVerdict.ALLOW
+    # Allowed, but not silently: the finding is the audit trail.
+    assert result.findings[0].rule == "content_safety_intellectual_property"
+    assert result.findings[0].severity is Severity.WARN
+    assert "not a blocking hazard" in result.findings[0].detail
+
+
+async def test_blocking_hazards_still_deny_under_the_same_policy(generator) -> None:
+    generator.default = "unsafe\nS1"
+    guard = LlamaGuardGuardrail(generator, blocking_hazards=DEFAULT_BLOCKING_HAZARDS)
+
+    result = await guard.check("a genuinely harmful request", Direction.INGRESS)
+
+    assert result.verdict is GuardrailVerdict.DENY
+    assert result.findings[0].rule == "content_safety_violent_crimes"
+    assert result.findings[0].severity is Severity.CRITICAL
+
+
+async def test_unparseable_hazard_code_still_denies(generator) -> None:
+    """`unsafe` with no code that parses is not a licence to proceed."""
+    generator.default = "unsafe"
+    guard = LlamaGuardGuardrail(generator, blocking_hazards=frozenset())
+
+    result = await guard.check("something", Direction.INGRESS)
+
+    assert result.verdict is GuardrailVerdict.DENY
+    assert result.findings[0].rule == "content_safety_uncategorized"
+
+
+async def test_direct_construction_blocks_every_hazard(generator) -> None:
+    """No policy argument means no policy opinion, and silence must block."""
+    generator.default = "unsafe\nS8"
+
+    result = await LlamaGuardGuardrail(generator).check("anything", Direction.INGRESS)
+
+    assert result.verdict is GuardrailVerdict.DENY
+
+
+async def test_flagged_hazard_clears_the_envelope_and_reaches_the_ledger(
+    generator, audit
+) -> None:
+    """The whole point: the request proceeds AND the hit stays countable."""
+    generator.default = "unsafe\nS8"
+    gov = GovernanceMiddleware(
+        guardrail=GuardrailChain(
+            [
+                RegexGuardrail(),
+                LlamaGuardGuardrail(generator, blocking_hazards=DEFAULT_BLOCKING_HAZARDS),
+            ]
+        ),
+        audit=audit,
+    )
+
+    envelope, _ = await gov.ingress("implement a Reptile Game in Pygame")
+
+    assert envelope.cleared, "an S8 flag must not stop the pipeline"
+    assert envelope.block_reason is None
+    # `compliance_flags()` is what the orchestrator copies onto the audit
+    # record, so this is the assertion that the flag is actually auditable
+    # rather than merely present on an object that gets dropped.
+    assert "rule:content_safety_intellectual_property" in envelope.compliance_flags()
+
+
+def test_default_policy_excludes_only_intellectual_property() -> None:
+    hazards = OllamaSettings().blocking_hazards
+
+    assert "S8" not in hazards
+    assert set(LLAMA_GUARD_HAZARDS) - hazards == {"S8"}
+
+
+def test_unknown_hazard_code_is_rejected_at_load_time() -> None:
+    """A typo here would fail open and silently, which is the worst shape."""
+    with pytest.raises(ValidationError, match="unknown Llama Guard hazard code"):
+        OllamaSettings(blocking_hazards=frozenset({"S1", "S99"}))
+
+
+async def test_mixed_verdict_blocks_if_any_code_blocks(generator) -> None:
+    """`unsafe\nS8,S1` must deny regardless of which code the model lists first.
+
+    Reading only the leading code would make the ORDER of a comma-separated
+    list an authorisation decision. Both orderings are asserted because only
+    one of them fails under a first-match parser, and it is not the obvious one.
+    """
+    for raw in ("unsafe\nS8,S1", "unsafe\nS1,S8", "unsafe\nS8, S9"):
+        generator.default = raw
+        guard = LlamaGuardGuardrail(generator, blocking_hazards=DEFAULT_BLOCKING_HAZARDS)
+
+        result = await guard.check("x", Direction.INGRESS)
+
+        assert result.verdict is GuardrailVerdict.DENY, raw
+
+
+async def test_multiple_non_blocking_codes_still_allow_and_name_them_all(generator) -> None:
+    generator.default = "unsafe\nS8"
+    guard = LlamaGuardGuardrail(generator, blocking_hazards=DEFAULT_BLOCKING_HAZARDS)
+
+    result = await guard.check("x", Direction.INGRESS)
+
+    assert result.verdict is GuardrailVerdict.ALLOW
+    assert "S8" in result.findings[0].detail

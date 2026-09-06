@@ -102,6 +102,10 @@ scripts/
 11. Two guardrail layers, ORTHOGONAL not stacked. Regex = prompt injection,
     exfiltration, residual secrets. Llama Guard = harmful content only; it
     returns `safe` for a textbook injection. Neither substitutes for the other.
+    Of Llama Guard's thirteen categories, S8 (intellectual_property) FLAGS but
+    does not refuse - it fires on ordinary "implement X" requests based on what
+    you call the program. It is still recorded in the ledger. See decision 31
+    and `OllamaSettings.blocking_hazards`.
 12. Thresholds are calibrated against `data/calibration` (external PEPs), never
     against this repo's own docs - that is circular. Re-run
     `scripts/calibrate_thresholds.py` after any reranker or embedder change.
@@ -109,7 +113,13 @@ scripts/
 14. Nothing in `ui/` decides, spends or logs. It renders what the pipeline
     produced. If a display needs a number the pipeline does not produce, add it
     to `ExecutionResult` - do not compute a plausible one in the renderer.
-15. Every value the UI shows is live, cited, or absent. A recorded benchmark is
+15. BOTH tiers screen their answer on EGRESS, not just the frontier. An
+    ingress classifier cannot vouch for what a model does with a prompt, and
+    llama-guard3 single-labels a whole prompt - so a request steered into a
+    non-blocking category reaches the model. Screening the output is what
+    closes that. Restore PII from the egress-scrubbed text, never the raw
+    completion. See decision 31a.
+16. Every value the UI shows is live, cited, or absent. A recorded benchmark is
     labelled with the decision that recorded it. "Not measured" is a valid
     status; a placeholder that looks like a reading is not. See decision 29.
 

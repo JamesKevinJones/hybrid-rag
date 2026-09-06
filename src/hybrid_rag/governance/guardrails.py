@@ -29,6 +29,7 @@ from typing import Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
+from hybrid_rag.config import LLAMA_GUARD_HAZARDS
 from hybrid_rag.governance.audit import GuardrailVerdict
 from hybrid_rag.llm.ollama_client import LocalInferenceError, TextGenerator
 
@@ -201,23 +202,10 @@ class RegexGuardrail:
 # here - the model classifies against S1-S13 and nothing else.
 _LLAMA_GUARD_SYSTEM = "You are a safety classifier."
 
-# Llama Guard 3's hazard categories, used to turn a bare "S1" into something an
-# auditor can read without a lookup table.
-_HAZARD_CATEGORIES: dict[str, str] = {
-    "S1": "violent_crimes",
-    "S2": "non_violent_crimes",
-    "S3": "sex_related_crimes",
-    "S4": "child_sexual_exploitation",
-    "S5": "defamation",
-    "S6": "specialized_advice",
-    "S7": "privacy",
-    "S8": "intellectual_property",
-    "S9": "indiscriminate_weapons",
-    "S10": "hate",
-    "S11": "suicide_and_self_harm",
-    "S12": "sexual_content",
-    "S13": "elections",
-}
+# The hazard table lives in config.py so `OllamaSettings.blocking_hazards` can
+# validate against it. Re-exported here because this is where readers look for
+# it, and it turns a bare "S1" into something an auditor reads without a lookup.
+_HAZARD_CATEGORIES = LLAMA_GUARD_HAZARDS
 
 _HAZARD_CODE = re.compile(r"\bS(1[0-3]|[1-9])\b")
 
@@ -265,9 +253,16 @@ class LlamaGuardGuardrail:
         generator: TextGenerator,
         model: str = "llama-guard3:1b",
         directions: frozenset[Direction] = frozenset({Direction.INGRESS, Direction.EGRESS}),
+        blocking_hazards: frozenset[str] | None = None,
     ) -> None:
         self._generator = generator
         self._model = model
+        # Which hazards REFUSE, as opposed to annotate. `None` means all of
+        # them: a caller that constructs this directly has said nothing about
+        # policy, and the safe reading of silence is to block. The configured
+        # default (which excludes S8) is applied in container.py, where policy
+        # belongs.
+        self._blocking_hazards = blocking_hazards
         # CONTEXT is excluded by default, and the reason is arithmetic. At 38 ms
         # a call, screening every retrieved chunk adds ~340 ms to a request that
         # otherwise answers in a few hundred - and a corpus passage is dangerous
@@ -302,10 +297,42 @@ class LlamaGuardGuardrail:
         # An "unsafe" verdict carries the hazard code on the following line. A
         # bare code in an audit ledger is a lookup task for whoever reads it
         # later; the category name is free to store, so store it.
-        # lookup task for whoever reads it later; the name is free to store.
-        match = _HAZARD_CODE.search(raw)
-        code = match.group(0) if match else None
+        # ALL codes, not the first. Llama Guard can answer with several codes on
+        # one line, and once any category is non-blocking, reading only the
+        # leading one turns the order of a comma-separated list into an
+        # authorisation decision.
+        codes = [f"S{n}" for n in _HAZARD_CODE.findall(raw)]
+        code = codes[0] if codes else None
         category = _HAZARD_CATEGORIES.get(code or "", "uncategorized")
+
+        # An unsafe verdict whose code did not parse blocks. "I could not tell
+        # which hazard" is not a reason to allow something the classifier just
+        # called unsafe. And a mixed verdict blocks if ANY of its codes block.
+        blocks = (
+            self._blocking_hazards is None
+            or not codes
+            or any(c in self._blocking_hazards for c in codes)
+        )
+        if not blocks:
+            # Flagged, not refused. The finding still rides on the envelope and
+            # still reaches the ledger's compliance flags, so the rate of these
+            # stays countable - which is the difference between a scoped policy
+            # and a deleted check.
+            return GuardrailResult(
+                verdict=GuardrailVerdict.ALLOW,
+                findings=[
+                    GuardrailFinding(
+                        rule=f"content_safety_{category}",
+                        severity=Severity.WARN,
+                        detail=(
+                            f"llama-guard3 flagged {','.join(codes)} ({category}); "
+                            "not a blocking hazard"
+                        ),
+                    )
+                ],
+                checked_by=[self.name],
+            )
+
         return GuardrailResult(
             verdict=GuardrailVerdict.DENY,
             findings=[

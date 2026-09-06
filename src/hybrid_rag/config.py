@@ -23,6 +23,30 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
+# Llama Guard 3's hazard taxonomy. It lives here rather than in guardrails.py
+# so `blocking_hazards` below can validate against it - guardrails.py imports
+# the model client, which imports this module, so the dependency only runs one
+# way.
+LLAMA_GUARD_HAZARDS: dict[str, str] = {
+    "S1": "violent_crimes",
+    "S2": "non_violent_crimes",
+    "S3": "sex_related_crimes",
+    "S4": "child_sexual_exploitation",
+    "S5": "defamation",
+    "S6": "specialized_advice",
+    "S7": "privacy",
+    "S8": "intellectual_property",
+    "S9": "indiscriminate_weapons",
+    "S10": "hate",
+    "S11": "suicide_and_self_harm",
+    "S12": "sexual_content",
+    "S13": "elections",
+}
+
+# Everything except S8. See `OllamaSettings.blocking_hazards`.
+DEFAULT_BLOCKING_HAZARDS: frozenset[str] = frozenset(LLAMA_GUARD_HAZARDS) - {"S8"}
+
+
 class VectorBackend(StrEnum):
     QDRANT = "qdrant"
     CHROMA = "chroma"
@@ -90,6 +114,36 @@ class OllamaSettings(BaseModel):
     # harmful content, not prompt injection. Set false if the model is not
     # pulled; it also fails open on its own if the model is missing.
     guard_enabled: bool = True
+    # Which hazard codes REFUSE a request, as opposed to merely annotating it.
+    #
+    # S8 (intellectual_property) is excluded by default, and that is a measured
+    # decision rather than a softening. Llama Guard's taxonomy was written for
+    # a general conversational assistant; on a coding assistant S8 fires on
+    # ordinary "implement X" work. Measured on this host, 3 samples each:
+    #
+    #     "...Pygame implementation of Snake." + full spec      -> safe
+    #     "...Pygame implementation of a Reptile Game." + spec  -> unsafe S8
+    #
+    # Same program. The classifier is reacting to the euphemism, not to the
+    # request, and a category that flips on what you call the thing cannot
+    # carry a refusal. The other twelve categories are genuine harm classes
+    # and all still deny.
+    #
+    # Excluded does not mean ignored: an S8 hit is still recorded as a WARN
+    # finding and still reaches the ledger's compliance flags, so the rate is
+    # auditable. See decision 31.
+    blocking_hazards: frozenset[str] = Field(default_factory=lambda: DEFAULT_BLOCKING_HAZARDS)
+
+    @model_validator(mode="after")
+    def _known_hazard_codes(self) -> OllamaSettings:
+        """A typo here fails open and silently. Reject it at load time instead."""
+        unknown = sorted(set(self.blocking_hazards) - set(LLAMA_GUARD_HAZARDS))
+        if unknown:
+            known = ", ".join(LLAMA_GUARD_HAZARDS)
+            raise ValueError(
+                f"unknown Llama Guard hazard code(s) {unknown}; known codes: {known}"
+            )
+        return self
 
     @property
     def generator_model(self) -> str:

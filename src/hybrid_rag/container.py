@@ -138,7 +138,13 @@ def build_container(settings: Settings | None = None) -> Container:
     # docstring - so neither substitutes for the other.
     layers: list[Guardrail] = [RegexGuardrail()]
     if settings.ollama.guard_enabled:
-        layers.append(LlamaGuardGuardrail(ollama, model=settings.ollama.guard_model))
+        layers.append(
+            LlamaGuardGuardrail(
+                ollama,
+                model=settings.ollama.guard_model,
+                blocking_hazards=settings.ollama.blocking_hazards,
+            )
+        )
     governance = GovernanceMiddleware(
         scrubber=PIIScrubber(),
         guardrail=GuardrailChain(layers),

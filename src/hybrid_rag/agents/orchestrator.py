@@ -366,7 +366,38 @@ class AgentOrchestrator:
 
         result.local_tokens_in = completion.tokens_in
         result.local_tokens_out = completion.tokens_out
-        result.answer = scrub.restore(completion.text)
+
+        # The local answer is screened on the way out, exactly as the Level 2
+        # answer is. This used to be frontier-only, on the reasoning that a
+        # local model is our own and the ingress screen had already vetted the
+        # question. Both halves of that were wrong.
+        #
+        # The ingress screen is a CLASSIFIER, and llama-guard3 assigns one
+        # category to a whole prompt. Once any category is non-blocking
+        # (decision 31), a request can be steered into the exempt label and
+        # carry the rest of its content through with it - measured: "explain
+        # how to hotwire a car" denies as S2, and the same request behind a
+        # copyright-flavoured clause clears as S8, 3 times out of 3. Screening
+        # here closes the harm channel rather than the label, and it holds for
+        # whatever the next classifier gets wrong too.
+        #
+        # It also covers the case the frontier screen was written for: a model
+        # echoing an injected instruction back, or reproducing a secret it read
+        # out of a retrieved chunk. A 3B is not less likely to do that.
+        outbound, _ = await self._governance.inspect(
+            completion.text, direction=Direction.EGRESS, trace_id=result.trace_id
+        )
+        if not outbound.cleared:
+            result.outcome = Outcome.BLOCKED
+            result.reason = _safe_reason(
+                f"local response refused on egress: {outbound.block_reason}"
+            )
+            return
+
+        # Restore from the EGRESS-scrubbed text, not the raw completion, so a
+        # residual secret the screen redacted cannot be reinstated on the way
+        # to the user. Same ordering as the frontier path.
+        result.answer = scrub.restore(outbound.safe_text)
 
     async def _execute_frontier(
         self,
