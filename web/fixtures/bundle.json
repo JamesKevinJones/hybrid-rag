@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-09-08T18:22:41+00:00",
+  "captured_at": "2026-09-09T08:14:48+00:00",
   "health": {
     "ollama_up": true,
     "ollama_url": "http://localhost:11434",
@@ -36,8 +36,8 @@
     "frontier_model": "claude-opus-5"
   },
   "budget": {
-    "now": 1788891761.0429432,
-    "window_started_at": 1788891560.16436,
+    "now": 1788941688.4930313,
+    "window_started_at": 1788941675.871406,
     "messages_used": 0,
     "messages_limit": 25,
     "tokens_used": 0,
@@ -45,23 +45,24 @@
     "weekly_messages_used": 0,
     "weekly_messages_limit": 250,
     "open_reservations": 0,
-    "seconds_to_window_reset": 17799.121416807175,
+    "seconds_to_window_reset": 17987.378374814987,
     "messages_remaining": 25,
     "tokens_remaining": 400000,
-    "window_hours": 5.0,
-    "exhausted": false
+    "weekly_messages_remaining": 250,
+    "exhausted": false,
+    "window_hours": 5.0
   },
   "ledger": {
     "path": "governance_audit.jsonl",
     "intact": true,
     "first_bad_line": 0,
-    "records": 445,
+    "records": 570,
     "rows": [
       {
-        "event_id": "b1cabced-68af-425e-8d44-50f963b1cb24",
-        "trace_id": "2be030d2-9d60-4e36-8cf6-2247f36cc2a3",
+        "event_id": "e56630e0-7d17-4628-b745-91d68f145ec4",
+        "trace_id": "933135f0-ff48-4b85-b290-143c9f90954e",
         "parent_event_id": null,
-        "timestamp": 1788891758.6154194,
+        "timestamp": 1788941686.5899408,
         "schema_version": "1.0-nist-ai-rmf",
         "stage": "governance_context",
         "agent_id": "governance",
@@ -76,7 +77,7 @@
         "token_source": "none",
         "tokens_in": 0,
         "tokens_out": 0,
-        "latency_ms": 1.2068000000908796,
+        "latency_ms": 0.38050000148359686,
         "confidence": null,
         "decision_reason": "cleared",
         "retrieval_sources": [],
@@ -85,7 +86,7 @@
           "guardrail:allow"
         ],
         "extra": {
-          "envelope_id": "61e9f65c-f2e0-45d0-bf8f-235859718494",
+          "envelope_id": "a93f700c-b1f3-4d4c-9958-5f1ea8897b16",
           "pii_counts": {},
           "checked_by": [
             "regex",
@@ -93,14 +94,14 @@
           ],
           "guardrail_rules": []
         },
-        "prev_hash": "0a017fe8776d20c15bf957c3b05e24a7571b4e18f6fb48e1997ade21b0c779e6",
-        "record_hash": "b5d4a98e1df2f68622bc69c329cb1a9251636c5d9bfe847c3610eda8300b3907"
+        "prev_hash": "fde9c383c2f8f34ea976a0016e462a99be70ee56cdd65a8c472d70cdc9c7ce46",
+        "record_hash": "a43cf2d279e43e11a2833122b24e4f07364266ad01da45400bbd1682f247c483"
       },
       {
-        "event_id": "aeb74fbe-da76-48e9-9348-7acfe8dc8518",
-        "trace_id": "2be030d2-9d60-4e36-8cf6-2247f36cc2a3",
+        "event_id": "ecc9b259-68b5-4821-80d0-e3f764371519",
+        "trace_id": "933135f0-ff48-4b85-b290-143c9f90954e",
         "parent_event_id": null,
-        "timestamp": 1788891758.6184196,
+        "timestamp": 1788941686.5909467,
         "schema_version": "1.0-nist-ai-rmf",
         "stage": "governance_context",
         "agent_id": "governance",
@@ -115,7 +116,7 @@
         "token_source": "none",
         "tokens_in": 0,
         "tokens_out": 0,
-        "latency_ms": 0.46539999993910897,
+        "latency_ms": 0.2645999993546866,
         "confidence": null,
         "decision_reason": "cleared",
         "retrieval_sources": [],
@@ -124,7 +125,7 @@
           "guardrail:allow"
         ],
         "extra": {
-          "envelope_id": "bb96de47-b884-442e-a7db-0555d9c48dc9",
+          "envelope_id": "074a0474-b790-4116-9bc1-c121b0d262df",
           "pii_counts": {},
           "checked_by": [
             "regex",
@@ -132,14 +133,14 @@
           ],
           "guardrail_rules": []
         },
-        "prev_hash": "b5d4a98e1df2f68622bc69c329cb1a9251636c5d9bfe847c3610eda8300b3907",
-        "record_hash": "b30b8c747a1eaf88890124d28a85f1322c515da7daaf8eb13250f39fb9446705"
+        "prev_hash": "a43cf2d279e43e11a2833122b24e4f07364266ad01da45400bbd1682f247c483",
+        "record_hash": "e125a4989e22f2f5e91beaab59b93e25874783b8201b0b6314f7866ee0aaa592"
       },
       {
-        "event_id": "1302d9db-7bbf-4783-a6b7-42a3660a5e7e",
-        "trace_id": "2be030d2-9d60-4e36-8cf6-2247f36cc2a3",
+        "event_id": "2f116d1d-84d6-4872-af49-364458966411",
+        "trace_id": "933135f0-ff48-4b85-b290-143c9f90954e",
         "parent_event_id": null,
-        "timestamp": 1788891758.6224194,
+        "timestamp": 1788941686.5930574,
         "schema_version": "1.0-nist-ai-rmf",
         "stage": "governance_context",
         "agent_id": "governance",
@@ -154,7 +155,7 @@
         "token_source": "none",
         "tokens_in": 0,
         "tokens_out": 0,
-        "latency_ms": 2.5580000001355074,
+        "latency_ms": 1.264499998796964,
         "confidence": null,
         "decision_reason": "cleared",
         "retrieval_sources": [],
@@ -163,7 +164,7 @@
           "guardrail:allow"
         ],
         "extra": {
-          "envelope_id": "8efafd85-b279-4abc-8420-c1deb0b59ce0",
+          "envelope_id": "d9506d51-27ee-43e6-8899-d82c0eea094c",
           "pii_counts": {},
           "checked_by": [
             "regex",
@@ -171,14 +172,14 @@
           ],
           "guardrail_rules": []
         },
-        "prev_hash": "b30b8c747a1eaf88890124d28a85f1322c515da7daaf8eb13250f39fb9446705",
-        "record_hash": "e3a34e41c477ceea4a625ac5c56ea5d7795bcc592e1d0348c69d6d31ffb8fee4"
+        "prev_hash": "e125a4989e22f2f5e91beaab59b93e25874783b8201b0b6314f7866ee0aaa592",
+        "record_hash": "30671bc627985ccf55672af5e27da36da6a0aee84dc91267f3dec957511dd3f9"
       },
       {
-        "event_id": "36e7456b-506d-4971-be77-8413cb06b8a2",
-        "trace_id": "2be030d2-9d60-4e36-8cf6-2247f36cc2a3",
+        "event_id": "24f0618f-f477-404e-b6bf-e5e6ed25872f",
+        "trace_id": "933135f0-ff48-4b85-b290-143c9f90954e",
         "parent_event_id": null,
-        "timestamp": 1788891758.6259327,
+        "timestamp": 1788941686.5940585,
         "schema_version": "1.0-nist-ai-rmf",
         "stage": "governance_context",
         "agent_id": "governance",
@@ -193,7 +194,7 @@
         "token_source": "none",
         "tokens_in": 0,
         "tokens_out": 0,
-        "latency_ms": 0.5820999999741616,
+        "latency_ms": 0.27409999893279746,
         "confidence": null,
         "decision_reason": "cleared",
         "retrieval_sources": [],
@@ -202,7 +203,7 @@
           "guardrail:allow"
         ],
         "extra": {
-          "envelope_id": "de0059da-87e5-404a-b994-f1dc43955175",
+          "envelope_id": "e57de244-d0e8-46b4-b2c5-1452005e413c",
           "pii_counts": {},
           "checked_by": [
             "regex",
@@ -210,14 +211,14 @@
           ],
           "guardrail_rules": []
         },
-        "prev_hash": "e3a34e41c477ceea4a625ac5c56ea5d7795bcc592e1d0348c69d6d31ffb8fee4",
-        "record_hash": "9660f63856769bbaca6e2264b630b791051f4668ad31a8629a0a9ea5fa5f8656"
+        "prev_hash": "30671bc627985ccf55672af5e27da36da6a0aee84dc91267f3dec957511dd3f9",
+        "record_hash": "f1750cc1ffd0ea2d8505131aea7f88aed207cc02f04f2393aac202ce63baf55b"
       },
       {
-        "event_id": "38a2e294-eec1-457f-af82-26af6731568c",
-        "trace_id": "2be030d2-9d60-4e36-8cf6-2247f36cc2a3",
+        "event_id": "c24b1df8-9bba-4c6d-be65-7016ba2e4596",
+        "trace_id": "933135f0-ff48-4b85-b290-143c9f90954e",
         "parent_event_id": null,
-        "timestamp": 1788891758.6279368,
+        "timestamp": 1788941686.5950592,
         "schema_version": "1.0-nist-ai-rmf",
         "stage": "governance_context",
         "agent_id": "governance",
@@ -232,7 +233,7 @@
         "token_source": "none",
         "tokens_in": 0,
         "tokens_out": 0,
-        "latency_ms": 0.5718000002161716,
+        "latency_ms": 0.2455000030749943,
         "confidence": null,
         "decision_reason": "cleared",
         "retrieval_sources": [],
@@ -241,7 +242,7 @@
           "guardrail:allow"
         ],
         "extra": {
-          "envelope_id": "6f2891e1-680c-427b-b3be-899a3a533182",
+          "envelope_id": "87c2864c-00bd-4c3d-aa5d-8eaa3a6ad39a",
           "pii_counts": {},
           "checked_by": [
             "regex",
@@ -249,14 +250,14 @@
           ],
           "guardrail_rules": []
         },
-        "prev_hash": "9660f63856769bbaca6e2264b630b791051f4668ad31a8629a0a9ea5fa5f8656",
-        "record_hash": "578f1c15f2bb3f9e7820403f1e7b9fe2d65f625780b6f23023b73eacf770dfbf"
+        "prev_hash": "f1750cc1ffd0ea2d8505131aea7f88aed207cc02f04f2393aac202ce63baf55b",
+        "record_hash": "3fa83bb1d0604c47163034f5a645e2cf12269a9205cd3a4e293dbafac8c5c18d"
       },
       {
-        "event_id": "2ae0e2a5-eec8-469d-a2a7-f26854535231",
-        "trace_id": "2be030d2-9d60-4e36-8cf6-2247f36cc2a3",
+        "event_id": "205f8679-1cf6-4d7a-b937-97a9abb37378",
+        "trace_id": "933135f0-ff48-4b85-b290-143c9f90954e",
         "parent_event_id": null,
-        "timestamp": 1788891758.630931,
+        "timestamp": 1788941686.5970566,
         "schema_version": "1.0-nist-ai-rmf",
         "stage": "routing_decision",
         "agent_id": "routing_gate",
@@ -271,7 +272,7 @@
         "token_source": "none",
         "tokens_in": 0,
         "tokens_out": 0,
-        "latency_ms": 1.2001000000054773,
+        "latency_ms": 1.1313000031805132,
         "confidence": 1.0,
         "decision_reason": "retrieval confidence 0.000 < 0.35",
         "retrieval_sources": [
@@ -329,20 +330,20 @@
           "retrieval_confidence": 0.0,
           "slm_vote": null,
           "estimated_tokens": 2063,
-          "reservation_id": "f98b9a7c-6889-4ce8-84b2-8377e0dda446",
-          "envelope_id": "140e0a75-db67-4402-9119-91feda2432eb",
+          "reservation_id": "15d81d14-1236-410b-b718-206c1601462e",
+          "envelope_id": "1c9f03b3-0e7f-4938-9b76-096fd3877038",
           "fired_signals": [
             "lookup"
           ]
         },
-        "prev_hash": "578f1c15f2bb3f9e7820403f1e7b9fe2d65f625780b6f23023b73eacf770dfbf",
-        "record_hash": "93bab81d49b7668643629d14dbf6857007d1dc2bef749764137ec8a2e8cb49ad"
+        "prev_hash": "3fa83bb1d0604c47163034f5a645e2cf12269a9205cd3a4e293dbafac8c5c18d",
+        "record_hash": "8877dd4b9a8328be0dfd3e0194154e2e35e7dd71241c612abfb8d19459f2bc82"
       },
       {
-        "event_id": "359be7d9-a385-4ad3-b99b-85d534a6a7bc",
-        "trace_id": "2be030d2-9d60-4e36-8cf6-2247f36cc2a3",
+        "event_id": "1c56a7f6-47b0-46c7-a3a0-3926d0ef7d21",
+        "trace_id": "933135f0-ff48-4b85-b290-143c9f90954e",
         "parent_event_id": null,
-        "timestamp": 1788891760.7685952,
+        "timestamp": 1788941688.4066672,
         "schema_version": "1.0-nist-ai-rmf",
         "stage": "governance_egress",
         "agent_id": "governance",
@@ -357,7 +358,7 @@
         "token_source": "none",
         "tokens_in": 0,
         "tokens_out": 0,
-        "latency_ms": 110.32900000009249,
+        "latency_ms": 71.1157000005187,
         "confidence": null,
         "decision_reason": "cleared",
         "retrieval_sources": [],
@@ -366,7 +367,7 @@
           "guardrail:allow"
         ],
         "extra": {
-          "envelope_id": "a777607d-7bc6-46a1-8043-a45a60f7351f",
+          "envelope_id": "fdba6597-2163-4640-8cc1-88a47ba7a60f",
           "pii_counts": {},
           "checked_by": [
             "regex",
@@ -374,14 +375,14 @@
           ],
           "guardrail_rules": []
         },
-        "prev_hash": "93bab81d49b7668643629d14dbf6857007d1dc2bef749764137ec8a2e8cb49ad",
-        "record_hash": "6153cca362970c7221df9fbe9cb6f3a80ff1859615e07d350df51bd70a3a1a62"
+        "prev_hash": "8877dd4b9a8328be0dfd3e0194154e2e35e7dd71241c612abfb8d19459f2bc82",
+        "record_hash": "083e4da459a116d159d3be3c0ecf68eb6940f7aac018ff1feee239c912115d40"
       },
       {
-        "event_id": "4c66fe3d-607b-41d5-a32a-620fbaa106ea",
-        "trace_id": "2be030d2-9d60-4e36-8cf6-2247f36cc2a3",
+        "event_id": "d9e94f9c-b39b-4106-8955-d86a1b349a83",
+        "trace_id": "933135f0-ff48-4b85-b290-143c9f90954e",
         "parent_event_id": null,
-        "timestamp": 1788891760.7789721,
+        "timestamp": 1788941688.407886,
         "schema_version": "1.0-nist-ai-rmf",
         "stage": "orchestration",
         "agent_id": "orchestrator",
@@ -396,7 +397,7 @@
         "token_source": "local_ollama",
         "tokens_in": 1841,
         "tokens_out": 71,
-        "latency_ms": 2586.398999999801,
+        "latency_ms": 1996.7524000021513,
         "confidence": 0.0,
         "decision_reason": "Level 2 unavailable (no credentials); answered locally",
         "retrieval_sources": [
@@ -457,8 +458,8 @@
           "degraded_reason": "Level 2 unavailable (no credentials); answered locally",
           "frontier_unavailable": true
         },
-        "prev_hash": "6153cca362970c7221df9fbe9cb6f3a80ff1859615e07d350df51bd70a3a1a62",
-        "record_hash": "b35be530e5e995ca0e9381ea9d3c67f2e336200ab71f13e8edcda87b08faa1d1"
+        "prev_hash": "083e4da459a116d159d3be3c0ecf68eb6940f7aac018ff1feee239c912115d40",
+        "record_hash": "51e9ebbc4d86bba23982199a6fc22344c7dfd7a1de878b64bfaf6ff7d43eb727"
       }
     ]
   },
@@ -474,19 +475,19 @@
         },
         {
           "stage": "retrieval",
-          "at_ms": 1587.3
+          "at_ms": 8894.9
         },
         {
           "stage": "generation",
-          "at_ms": 1794.8
+          "at_ms": 9609.0
         }
       ],
       "result": {
-        "trace_id": "9f9784e5-8b51-44cb-a207-f195ad3ec6ff",
+        "trace_id": "ca65c8e8-af08-4b41-9baa-818aa6a77416",
         "outcome": "local",
         "answer": "According to the context, the budget veto works as follows:\n\n1. A `RoutingGate` decides which tier answers a request.\n2. A rolling window budget is applied to the decision.\n3. If the budget is insufficient, the decision is vetoed and logged as `degraded_local` in the budget ledger.\n4. The veto is recorded and can be replayed later to verify the decision.\n5. The veto is authoritative, meaning it cannot be silently ignored or overwritten.\n\nIn other words, the budget veto ensures that the cloud quota is only spent on work that a local model cannot do, and provides a way to prove afterwards which decisions were made and which were vetoed due to budget constraints.",
         "reason": "heuristic score 0.00 <= 0.15",
-        "audit_hash": "a8060486d1af86b5c34ef56c8bc161d3df1101aa7ef3a182f5393bf91e97ee5c",
+        "audit_hash": "35da3c18e6cc2485e722be662d9427a93d282c61b726dac7f4c7756af1acb097",
         "retrieval_confidence": 0.9913,
         "routing_stage": "tier1_heuristic",
         "degraded_reason": null,
@@ -497,8 +498,8 @@
         "local_tokens_out": 143,
         "cloud_tokens_in": 0,
         "cloud_tokens_out": 0,
-        "latency_ms": 5976.176499999838,
-        "generation_ms": 4025.4690000001574,
+        "latency_ms": 15011.744799998269,
+        "generation_ms": 5336.563100001513,
         "sources": [
           {
             "doc_id": "6ca267332081f5f5",
@@ -556,23 +557,23 @@
       "stages": [
         {
           "stage": "governance",
-          "at_ms": 0.1
+          "at_ms": 0.0
         },
         {
           "stage": "retrieval",
-          "at_ms": 113.1
+          "at_ms": 50.4
         },
         {
           "stage": "generation",
-          "at_ms": 416.5
+          "at_ms": 167.9
         }
       ],
       "result": {
-        "trace_id": "9cfa1ab5-f7c4-485c-a3cd-cd3189d0898a",
+        "trace_id": "3c5145c2-d4ea-4288-9f60-eda51de04d15",
         "outcome": "local_degraded",
-        "answer": "Based on the provided context, here's a comparison of the retrieval strategies across all sources:\n\n1. **SemanticChunker**: Sentence-aligned with overlap, no re-ranking. This strategy is used in sources [2], [3], [5], and [6]. The main drawback is that it upserts an entire document as a single embedding, which destroys retrieval precision for long documents like PDFs.\n\n2. **FlashRank**: This strategy is used in source [2]. It's a Level 0 name, but the reference has neither the dependency nor the call. The FlashRankReranker is behind a Protocol, degrading to NullReranker when the extra is absent.\n\n3. **NullReranker**: This is used when the extra is absent in the FlashRankReranker. It's not explicitly mentioned in the context, but it's implied as a fallback strategy.\n\n4. **similarity_score = 1.0 - dist**: This strategy is used in source [4]. The similarity score can go negative due to the cosine similarity calculation in Chroma's cosine space, which returns distance in [0, 2] instead of [0, 1].\n\n5. **No chunking**: This strategy is used in sources [2], [3], [5], and [6]. It upserts an entire document as a single embedding, which destroys retrieval precision for long documents like PDFs.\n\n6. **No re-ranking**: This is a common characteristic among the strategies mentioned above, used in sources [2], [3], [5], and [6].\n\nRanking the strategies based on the provided context is challenging, as there's no explicit comparison or evaluation of their performance. However, if we consider the impact of each strategy on retrieval precision, we can rank them as follows:\n\n1. **No chunking**: This strategy is likely to have the worst impact on retrieval precision due to the loss of document structure and context.\n\n2. **SemanticChunker**: This strategy is likely to have a moderate impact on retrieval precision, as it preserves document structure but may not capture nuances in sentence alignment.\n\n3. **similarity_score = 1.0 - dist**: This strategy is likely to have a moderate impact on retrieval precision, as it uses a cosine similarity calculation that can capture nuances in document similarity.\n\n4. **FlashRank**: This strategy is likely to have a moderate impact on retrieval precision, as it uses a ranking system that can capture nuances in document relevance.\n\n5. **NullReranker**: This strategy is likely to have a minimal impact on retrieval precision, as it's a fallback strategy used when the extra is absent.\n\nNote that this ranking is speculative and based on the limited information provided in the context. A more comprehensive evaluation of the strategies would require additional information about their performance and evaluation metrics.",
+        "answer": "Based on the provided context, here's a comparison of the retrieval strategies across all sources:\n\n1. **SemanticChunker**: Sentence-aligned with overlap, no re-ranking. This strategy is used in sources [2], [3], [5], and [6]. The main drawback is that it upserts an entire document as a single embedding, which destroys retrieval precision for long documents like PDFs.\n\n2. **FlashRank**: This strategy is used in source [2]. It's a Level 0 name, but the reference has neither the dependency nor the call. The FlashRankReranker is behind a Protocol, degrading to NullReranker when the extra is absent.\n\n3. **NullReranker**: This is used when the extra is absent in the FlashRankReranker. It's not explicitly mentioned in the context, but it's implied as a fallback strategy.\n\n4. **similarity_score = 1.0 - dist**: This strategy is used in source [4]. The similarity score can go negative due to the cosine similarity calculation in Chroma's cosine space, which returns distance in [0, 2] instead of [0, 1].\n\n5. **No chunking**: This strategy is used in sources [2], [3], [5], and [6]. It upserts an entire document as a single embedding, which destroys retrieval precision for long documents like PDFs.\n\n6. **No re-ranking**: This is a common characteristic among the strategies mentioned above, used in sources [2], [3], [5], and [6].\n\nRanking the strategies based on the provided context is challenging, as there's no explicit comparison or evaluation of their performance. However, if we consider the impact of each strategy on retrieval precision, we can rank them as follows:\n\n1. **No chunking**: This strategy is likely to have the worst impact on retrieval precision due to the loss of document structure and context.\n\n2. **SemanticChunker**: This strategy is likely to have a moderate impact on retrieval precision, as it preserves document structure but may not capture nuances in sentence alignment.\n\n3. **similarity_score = 1.0 - dist**: This strategy is likely to have a moderate impact on retrieval precision, as it uses a cosine similarity calculation that can produce negative scores.\n\n4. **FlashRank**: This strategy is likely to have a moderate impact on retrieval precision, as it uses a ranking system that may not capture nuances in document content.\n\n5. **NullReranker**: This strategy is likely to have a minimal impact on retrieval precision, as it's a fallback strategy used when the extra is absent.\n\nNote that this ranking is speculative and based on the limited information provided in the context. A more comprehensive evaluation of the strategies would require additional data and analysis.",
         "reason": "Level 2 unavailable (no credentials); answered locally",
-        "audit_hash": "44495fb0be6872949164097ee00af1545a2eb26ab3b324aa527c261f0df35fcd",
+        "audit_hash": "a7c85357ddd1adc79c7e899bc3506da2631a184624aba93f49594bdcc8a30b33",
         "retrieval_confidence": 0.0008,
         "routing_stage": "tier2_retrieval_confidence",
         "degraded_reason": "Level 2 unavailable (no credentials); answered locally",
@@ -580,11 +581,11 @@
         "pii_status": "clean",
         "pii_entities": 0,
         "local_tokens_in": 885,
-        "local_tokens_out": 577,
+        "local_tokens_out": 572,
         "cloud_tokens_in": 0,
         "cloud_tokens_out": 0,
-        "latency_ms": 15483.751299999767,
-        "generation_ms": 14886.125600000014,
+        "latency_ms": 8699.078099998587,
+        "generation_ms": 8402.19270000307,
         "sources": [
           {
             "doc_id": "1aee469fb3629b31",
@@ -646,19 +647,19 @@
         },
         {
           "stage": "retrieval",
-          "at_ms": 123.7
+          "at_ms": 48.1
         },
         {
           "stage": "generation",
-          "at_ms": 497.6
+          "at_ms": 180.1
         }
       ],
       "result": {
-        "trace_id": "65adb782-f635-44e6-bd23-2de6e2a5895d",
+        "trace_id": "f7607d93-f2d8-4bf3-8e6a-e172bcfcec49",
         "outcome": "local_degraded",
         "answer": "The budget veto is a mechanism that prevents the router from escalating until the account is exhausted. It is implemented in the `routing/budget.py` module. When the router requests an escalation, the budget veto is checked. If the account has sufficient budget, the veto is lifted, and the escalation can proceed. If the account is exhausted, the veto remains in place, and the escalation is blocked. The veto is logged as `degraded_local` and is never silently swallowed.",
         "reason": "Level 2 unavailable (no credentials); answered locally",
-        "audit_hash": "fa70faba3d3fe33829fad607b6afe0b4954b41d68df1bab2196df6ffaf322b1e",
+        "audit_hash": "b65ba14169e647dfe9b0a77f360a18f061f652153de83961faf32b0c1394f528",
         "retrieval_confidence": 0.0018,
         "routing_stage": "tier2_retrieval_confidence",
         "degraded_reason": "Level 2 unavailable (no credentials); answered locally",
@@ -669,8 +670,8 @@
         "local_tokens_out": 97,
         "cloud_tokens_in": 0,
         "cloud_tokens_out": 0,
-        "latency_ms": 3647.1317999998973,
-        "generation_ms": 3019.345300000168,
+        "latency_ms": 1864.1986999973597,
+        "generation_ms": 1632.7281999983825,
         "sources": [
           {
             "doc_id": "6d318dd9deafb493",
@@ -728,15 +729,15 @@
       "stages": [
         {
           "stage": "governance",
-          "at_ms": 0.1
+          "at_ms": 0.0
         }
       ],
       "result": {
-        "trace_id": "c021895a-cfa1-4ada-9a32-09e2b791f195",
+        "trace_id": "2c967ad1-e283-460d-b850-94ef4862d258",
         "outcome": "blocked",
         "answer": "",
         "reason": "live credential material detected (ANTHROPIC_API_KEY); rotate it, do not mask it",
-        "audit_hash": "33f9f2d0cf289fa82a0530c193024f520da269ca4e0fcee1a71ac664f51689a9",
+        "audit_hash": "82cba7d8951ce8dbd72a0b1c7518656614fbababd66b2b8064cb2f9efbe9db52",
         "retrieval_confidence": 0.0,
         "routing_stage": null,
         "degraded_reason": null,
@@ -747,7 +748,7 @@
         "local_tokens_out": 0,
         "cloud_tokens_in": 0,
         "cloud_tokens_out": 0,
-        "latency_ms": 110.76060000004873,
+        "latency_ms": 54.24000000130036,
         "generation_ms": 0.0,
         "sources": [],
         "quarantined_chunks": 0,
@@ -763,15 +764,15 @@
       "stages": [
         {
           "stage": "governance",
-          "at_ms": 0.1
+          "at_ms": 0.0
         }
       ],
       "result": {
-        "trace_id": "46fb7ce0-3a84-40d7-a317-53566c850f3f",
+        "trace_id": "6742997b-523a-4d50-a18f-d233211c5187",
         "outcome": "blocked",
         "answer": "",
         "reason": "guardrail denied: content_safety_violent_crimes, instruction_override",
-        "audit_hash": "eb9d50f1e15ca5b5e243e76016304081145c620b982d8743def54177d28ae924",
+        "audit_hash": "fdc2ea9afe47716c231fd77cb8ca7b3fc31502317a77d02ef236fa18a249cef9",
         "retrieval_confidence": 0.0,
         "routing_stage": null,
         "degraded_reason": null,
@@ -782,7 +783,7 @@
         "local_tokens_out": 0,
         "cloud_tokens_in": 0,
         "cloud_tokens_out": 0,
-        "latency_ms": 135.8477000003404,
+        "latency_ms": 81.45460000014282,
         "generation_ms": 0.0,
         "sources": [],
         "quarantined_chunks": 0,
@@ -798,23 +799,23 @@
       "stages": [
         {
           "stage": "governance",
-          "at_ms": 0.1
+          "at_ms": 0.0
         },
         {
           "stage": "retrieval",
-          "at_ms": 85.1
+          "at_ms": 58.5
         },
         {
           "stage": "generation",
-          "at_ms": 440.4
+          "at_ms": 187.6
         }
       ],
       "result": {
-        "trace_id": "2be030d2-9d60-4e36-8cf6-2247f36cc2a3",
+        "trace_id": "933135f0-ff48-4b85-b290-143c9f90954e",
         "outcome": "local_degraded",
         "answer": "There is no answer to this question in the provided context. The context appears to be related to programming and technical topics, such as Python, uv, and Ollama, but it does not mention airspeed velocity or swallows. The question seems to be a reference to a famous joke from the movie Monty Python and the Holy Grail.",
         "reason": "Level 2 unavailable (no credentials); answered locally",
-        "audit_hash": "b35be530e5e995ca0e9381ea9d3c67f2e336200ab71f13e8edcda87b08faa1d1",
+        "audit_hash": "51e9ebbc4d86bba23982199a6fc22344c7dfd7a1de878b64bfaf6ff7d43eb727",
         "retrieval_confidence": 0.0,
         "routing_stage": "tier2_retrieval_confidence",
         "degraded_reason": "Level 2 unavailable (no credentials); answered locally",
@@ -825,8 +826,8 @@
         "local_tokens_out": 71,
         "cloud_tokens_in": 0,
         "cloud_tokens_out": 0,
-        "latency_ms": 2586.398999999801,
-        "generation_ms": 2024.2308000001685,
+        "latency_ms": 1996.7524000021513,
+        "generation_ms": 1736.3190000032773,
         "sources": [
           {
             "doc_id": "a0ea697f9555ac53",
