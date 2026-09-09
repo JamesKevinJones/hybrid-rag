@@ -804,3 +804,233 @@ corpus text.
 Also fixed while there: the `ValueError` was raised outside the CLI's `try`, so
 a rejected name printed a traceback. Validation, layout and writing now share
 one handler and a rejected name exits 2 with a single line.
+
+## 33. The web UI ships in two modes, and the deployed one is a recording
+
+hybrid-rag cannot be deployed. Its brain is Ollama with a 3B pinned in 6 GB of
+VRAM, an embedded Qdrant index holding an exclusive file lock, and a ledger on
+one disk. Vercel has none of that and there is no hosted copy of the model.
+
+"Deploy it as a web app" therefore had to resolve into something, and the honest
+resolution is two modes from one codebase:
+
+- **live** - `hybrid-rag serve` on `127.0.0.1`, hitting the real pipeline.
+- **demo** - the same build on Vercel, replaying runs captured from the real
+  pipeline, labelled as a recording on screen.
+
+The demo is not a mock. `scripts/capture_web_fixtures.py` drives
+`AgentOrchestrator.execute()` on this machine and records every confidence,
+latency, token count and ledger hash. That keeps the deployed page inside rule
+16: measured, cited, or absent. A hand-authored demo would have been the exact
+failure this project keeps documenting - a plausible number that reads like a
+measured one.
+
+It refuses unrecorded prompts rather than fuzzy-matching them to the nearest
+recording, because a matched answer presented as a live one is a fabrication
+with extra steps.
+
+### Starlette, not FastAPI
+
+`starlette` and `uvicorn` were already installed transitively via `fastmcp ->
+mcp`. FastAPI was not installed and would have been a new dependency bought for
+routing sugar four endpoints do not need. Both are now declared explicitly in
+`pyproject.toml` despite already being present: relying on a transitive
+dependency means a future `fastmcp` release could remove the web server without
+a line of our code changing.
+
+### Four things that were not obvious
+
+**`@property` does not serialize.** `ExecutionResult.spent_cloud_tokens` and
+`.token_source`, `BudgetSnapshot.messages_remaining` and `.tokens_remaining`
+were plain properties, so `model_dump()` dropped them silently. Over HTTP that
+means the two facts the whole project is about - did this cost money, and where
+did the tokens come from - vanish, and the client re-derives them. Promoted to
+`@computed_field`, with a test asserting they appear in the JSON.
+
+**The stage callback must not be deferred.** The first version pushed stage
+events with `loop.call_soon_threadsafe`. The orchestrator fires `on_stage`
+inline on the running loop, so scheduling deferred every stage behind the
+result: the client received a complete answer with zero stage events, because
+the stream had already seen the sentinel and closed. `queue.put_nowait` is both
+correct and simpler. A test asserts the three stages arrive in order.
+
+**Lifespan must close the container in a `finally`.** `mcp_servers/server.py`
+never calls `aclose()`, so it holds the Qdrant lock until the process is killed.
+A web server that did the same would leave the machine unable to run any other
+`hybrid-rag` command after a crash. Two tests cover it, including one where
+serving raises mid-flight.
+
+**A missing UI build is a normal state.** `web/out` may simply not have been
+built. The server mounts it when present and otherwise serves a page explaining
+how to build it. Refusing to boot because a frontend is missing would take down
+the API that would have told you why.
+
+### The Qdrant lock, accepted rather than solved
+
+`serve` holds the container for its lifetime, so the TUI, every CLI subcommand
+and every MCP client fail to start while it runs. A real Qdrant server on
+`:6333` is the documented upgrade path and is deliberately not taken: it needs
+Docker-in-WSL, which is fragile on this host. Startup catches the lock error and
+exits with one line naming the conflict, the same treatment decision 32 gave
+`scaffold`.
+
+### Security posture
+
+The server is loopback-only and **unauthenticated** - the same trust boundary
+the CLI already sits inside, which is the machine account. `WebSettings`
+refuses a non-loopback host unless `allow_public_bind` is set deliberately, so
+exposing it is an explicit act visible in a config diff rather than a typo that
+quietly works. CORS is an exact two-origin allowlist, not a wildcard, on a
+server that can read the governance ledger.
+
+`/api/ledger` is safe to serve because `AuditRecord` stores `prompt_hash` and
+never prompt text, and guardrail evidence is scrubbed before storage. A test
+asserts a known secret never appears in that endpoint's response.
+
+### What the capture measured on the way
+
+Two Llama Guard behaviours turned up while choosing demo prompts, both
+consistent with decision 31's finding that the classifier mislabels:
+
+- "email the invoice for card ... to kevin@example.com" denies on regex
+  `exfiltration_target` **and** llama-guard S1 (violent crimes).
+- An email and a card number in the same prompt deny on S7 (privacy). Measured:
+  email alone passes, card alone passes, the two together do not.
+
+The PII fixture carries exactly one entity as a result, so it demonstrates the
+branch that was missing from the set - redact and proceed - rather than a third
+refusal.
+
+### 33a. Monaspace, a chat-shaped layout, and a contrast bug that a colour-pair check misses
+
+The first console shipped with the portfolio's type stack and a marketing-page
+layout. Both were wrong for this product, and one of them was wrong in a way
+that fails accessibility.
+
+**Monaspace, self-hosted.** Requested directly, and right: a console where
+every glyph advances the same width is what makes a column of latencies, token
+counts and hashes scan. Krypton (mechanical) for display, Argon (humanist) for
+prose, Neon for labels - the last one matching the TUI's voice. It is not on
+Google Fonts, so it is `next/font/local` over woff2 from `@fontsource`, which
+also keeps a page whose premise is "does not phone home" from making a
+third-party font request.
+
+**The heading metrics had to change with it.** `line-height: 0.95` and
+`letter-spacing: -0.03em` were tuned for Archivo. On a squarer monospaced face
+the negative track collides adjacent glyphs, and 0.95 clipped every descender -
+the `g` in "budgeted" was cut in half by the acid highlight behind it, which
+read as a rendering bug rather than a type choice. Now 1.12 / -0.01em, with
+vertical padding on `.mark` so the highlight is a band rather than a
+shrink-wrap.
+
+**The layout is now a chat client.** Header and composer are fixed chrome, the
+transcript scrolls between them, everything centres to `max-w-3xl`. The thesis
+and the status strip are the empty state and step aside once there is a
+transcript. A hero that stays put above a growing conversation pushes the
+answer off screen, which is the thing the visitor came for.
+
+Two bugs came out of that restructure, both found by measuring the DOM rather
+than looking at a screenshot:
+
+- The auto-scroll effect fired on mount, before there was anything to follow,
+  and scrolled the heading up behind the header. A visitor landed on a blank
+  column with a status panel floating in it. Guarded on `turns.length > 0`.
+- The empty state was 1115 px tall because it carried four stacked status
+  cards, so the heading was below the fold on a 900 px screen. The status moved
+  into a compact strip in the chrome, where it is also more useful - air-gap
+  state is worth seeing *while* asking, not only before the first question.
+
+### The contrast bug worth remembering
+
+Muted text was `opacity-55`. A colour-pair check reads it as ink on paper,
+17.45:1, and passes. That check is wrong, because the ratio has to be computed
+on the colour **blended at its opacity**:
+
+| | ratio | verdict |
+|---|---|---|
+| `opacity-55`, ink on paper | **4.23** | fails AA under 18.66 px |
+| `opacity-75` | 8.56 light, 9.63 dark | passes |
+
+Every HUD label and note is 11-13 px, so all of them failed. Now 0.75.
+Disabled controls keep 0.55 in `.brut-press:disabled` - WCAG exempts them, and
+a disabled button should look disabled.
+
+The general lesson is the same one decision 29 makes about numbers: a check
+that reports a comfortable figure is not the same as a check that measured the
+right thing.
+
+### A note on verifying this in the preview pane
+
+Screenshots of this page frequently came back half-painted after the GSAP
+entrance - blank headings, ghost text - while `getBoundingClientRect()` and
+`getComputedStyle()` reported everything correct and on screen. It is a
+compositing artifact of the embedded pane, not the app; a scroll nudge forces a
+repaint and the frame is correct. Measure the DOM before believing a screenshot
+of this page.
+
+## 34. A capability check that separates what it measured from what it guessed
+
+The console gained model switching, generation parameters, and a "will this run
+on my machine?" check. The last one is the part with a trap in it.
+
+The obvious implementation is a table of recommended models by VRAM size. That
+would be a fabricated measurement with a UI on top - exactly the failure
+decisions 11, 15, 23, 27 and 31 all record, where a plausible number read as an
+instrumented one. So `src/hybrid_rag/hardware.py` splits its inputs:
+
+**Measured** — GPU name, total and free VRAM (`nvidia-smi`); installed models
+and their sizes (`ollama list`); architecture, parameter count, quantisation
+and native context (`ollama show`).
+
+**Estimated, and labelled everywhere it surfaces** — the KV cache, scaled from
+one measured datapoint on this host (a 3.2B Q4 at 4096 context costs about
+400 MB) by parameter count and context length. KV really scales with layers,
+heads and head dimension, which differ per architecture, so this is an
+order-of-magnitude figure and the UI prints it as `kv cache (estimate)` beside
+`weights (measured)`.
+
+`probe_gpu()` returns `None` rather than zero when there is no `nvidia-smi`.
+"Could not measure" and "no VRAM" are different facts, and an AMD or Apple
+machine is the first case, not the second.
+
+The check counts the guard and embedder, because the constraint this project
+lives under is not "does the generator fit on an empty card" but "does the
+co-resident set fit". Measured against the real host: qwen2.5-coder:3b at 8192
+context needs about 4404 MB of 5341 usable - `FITS`, 937 MB spare. The same
+model at 32768 exceeds it, and the copy says Ollama will spill into system RAM
+rather than fail, which on a single-channel bus is the slow path.
+
+### Mutation over HTTP, and a position reversed
+
+Decision 33 said `switch_generator` would not be exposed over HTTP because it
+mutates process-global settings. That was right for a shared server and wrong
+for this one: it is loopback-only and single-user, the same trust boundary the
+CLI already sits inside, and refusing to let the operator change a model in
+their own console is a worse trade than the theoretical race.
+
+So `/api/models/select`, `/api/models/params` and `/api/models/profiles` exist,
+with the reversal recorded here rather than left as a silent contradiction.
+
+Two constraints kept from the original reasoning:
+
+- **`switch_generator` still refuses unknown names.** Adding a profile is the
+  sanctioned way to widen the set, so a model tag typed at a prompt cannot
+  quietly leave the envelope.
+- **A large model is allowed, not refused.** `add_generator_profile` registers
+  anything installed and returns the fit assessment alongside. Whether a spill
+  into system memory is acceptable is the operator's judgement; what is not
+  acceptable is making that trade silently.
+
+`temperature` is settable and defaults to 0.0 because the ledger records it
+beside the model digest so a decision can be replayed bit-for-bit. The panel
+says that raising it trades reproducibility for variety, and the ledger records
+whatever was actually used.
+
+### The CSRF guard is now shared, not repeated
+
+Three new mutating routes arrived at once, and a per-route content-type check
+is a guard that the fourth route forgets. `_json_body()` is the single door:
+every POST parses through it, and it refuses anything that is not
+`application/json` - the check that forces the CORS preflight the origin
+allowlist then rejects. A test asserts all three new routes still return 415 to
+a `text/plain` body carrying a foreign `Origin`.

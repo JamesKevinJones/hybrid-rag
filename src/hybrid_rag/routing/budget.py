@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 import orjson
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from hybrid_rag.config import BudgetSettings
 
@@ -62,13 +62,40 @@ class BudgetSnapshot(BaseModel):
     open_reservations: int
     seconds_to_window_reset: float
 
+    # `computed_field` so these survive `model_dump()`. They are the only two
+    # numbers a budget display actually reads, and a plain property drops them
+    # from every JSON response without a word.
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def messages_remaining(self) -> int:
         return max(0, self.messages_limit - self.messages_used)
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def tokens_remaining(self) -> int:
         return max(0, self.tokens_limit - self.tokens_used)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def weekly_messages_remaining(self) -> int:
+        return max(0, self.weekly_messages_limit - self.weekly_messages_used)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def exhausted(self) -> bool:
+        """No further escalation can be reserved right now.
+
+        Mirrors `RollingWindowBudget.reserve()` exactly - all three caps it
+        enforces, not just the rolling window. A version of this that only
+        checked the 5-hour window reported capacity while the weekly cap was
+        vetoing every escalation, which is worse than not showing a status at
+        all: it looks authoritative and is wrong.
+        """
+        return (
+            self.messages_remaining == 0
+            or self.tokens_remaining == 0
+            or self.weekly_messages_remaining == 0
+        )
 
 
 class BudgetDecision(BaseModel):

@@ -30,6 +30,7 @@ from hybrid_rag.governance.pii import PIIScrubber
 from hybrid_rag.routing.budget import RollingWindowBudget
 from hybrid_rag.routing.routing_gate import RoutingGate
 from hybrid_rag.ui import tui
+from hybrid_rag.ui.residency import ResidentModel, residency_for
 
 # `ollama ps` as it actually prints. Both SIZE and PROCESSOR are two tokens,
 # which is the detail an earlier parser got wrong - it reported "100%" and
@@ -96,15 +97,30 @@ def test_nothing_resident_is_not_the_same_as_could_not_measure(monkeypatch) -> N
 
 
 def test_unmeasured_residency_says_so_rather_than_guessing() -> None:
-    text, _ = tui._residency_cell(None, "qwen2.5-coder:3b")
+    text, is_resident = residency_for(None, "qwen2.5-coder:3b")
     assert "not measured" in text
+    assert is_resident is False
 
-    text, _ = tui._residency_cell([], "qwen2.5-coder:3b")
+    text, is_resident = residency_for([], "qwen2.5-coder:3b")
     assert "not resident" in text
+    assert is_resident is False
 
-    resident = [tui.ResidentModel("qwen2.5-coder:3b", "2.2 GB", "100% GPU")]
-    text, _ = tui._residency_cell(resident, "qwen2.5-coder:3b")
+    resident = [ResidentModel("qwen2.5-coder:3b", "2.2 GB", "100% GPU")]
+    text, is_resident = residency_for(resident, "qwen2.5-coder:3b")
     assert "100% GPU" in text and "2.2 GB" in text
+    assert is_resident is True
+
+
+def test_residency_matches_a_row_that_omits_the_tag() -> None:
+    """`llama3.2:3b-instruct-q4_K_M` is loaded when `ollama ps` says `llama3.2:3b`.
+
+    The tag is packaging; the question is whether the weights are in memory.
+    """
+    resident = [ResidentModel("llama3.2:3b", "2.6 GB", "100% GPU")]
+
+    _, is_resident = residency_for(resident, "llama3.2:3b-instruct-q4_K_M")
+
+    assert is_resident is True
 
 
 # --------------------------------------------------------------------------

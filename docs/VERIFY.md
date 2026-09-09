@@ -11,7 +11,7 @@ uv run pytest
 ```
 
 Expected: `All checks passed!`, `Success: no issues found in 28 source files`,
-`392 passed`.
+`433 passed`.
 
 Note `ruff check src tests` misses `scripts/`. Run `ruff check src tests scripts`
 if you touched anything there - `verify_mcp_clients.py` lives in it and is
@@ -385,4 +385,155 @@ at run time rather than at load:
 
 ```bash
 uv run python -c "import json,re,pathlib; t=json.loads(pathlib.Path('.vscode/tasks.json').read_text(encoding='utf-8')); labels={x['label'] for x in t['tasks']}; ids={i['id'] for i in t['inputs']}; used=set(re.findall(r'\$\{input:(\w+)\}', json.dumps(t))); agg=next(x for x in t['tasks'] if x.get('dependsOn')); assert set(agg['dependsOn'])<=labels and used<=ids; print('tasks.json OK')"
+```
+
+## Web console
+
+Close the TUI first - `serve` holds the Qdrant lock for its lifetime.
+
+```bash
+cd web; npm install; npm run build
+uv run hybrid-rag serve
+```
+
+**Screenshots of this page can lie.** The GSAP entrance frequently leaves the
+embedded preview pane half-painted - blank headings, ghost text - while the DOM
+is correct. A scroll nudge forces a repaint. Measure with
+`getBoundingClientRect()` before believing a blank frame; decision 33a.
+
+Open `http://127.0.0.1:8000`. The header badge must read **LIVE** (runtime
+detection: localhost means there is plausibly a server). Expect the HUD to show
+the resident model, `21 ms p50, recorded in decision 15` under the reranker, and
+`OFFLINE` under air-gap while no `ANTHROPIC_API_KEY` is set.
+
+Ask "How does the budget veto work?" and expect the three stages to advance in
+order, then a badge reading `LOCAL`, `cloud 0+0`, confidence near 0.99, and a
+ledger hash. Measured on this host: 0.9913, 41 tok/s, 5343 ms.
+
+The ledger hash in the badge is real - `uv run hybrid-rag verify-ledger` walks
+the same chain.
+
+### The API without a browser
+
+```bash
+curl -s http://127.0.0.1:8000/api/health
+curl -s "http://127.0.0.1:8000/api/ledger?limit=2"
+curl -sN -X POST http://127.0.0.1:8000/api/ask \
+  -H "content-type: application/json" -d '{"query":"How does the budget veto work?"}'
+```
+
+The last one streams `event: stage` three times, then `event: result`. If the
+stages arrive after the result, the queue bridge has regressed to deferred
+scheduling - decision 33.
+
+### Demo mode
+
+```bash
+cd web && NEXT_PUBLIC_HYBRID_RAG_MODE=demo npm run build
+```
+
+Serve `out/` any way you like. The header must read **RECORDED**, a hazard band
+must carry the disclosure, and the capture date must be visible. Clicking a
+recorded prompt replays it; typing anything else must say it was not recorded
+rather than answering.
+
+Rebuild without the env var before committing - the shipped artifact relies on
+runtime detection so one build serves both hosts.
+
+### Re-capturing the fixtures
+
+Mandatory after any change to the pipeline that would alter what the demo
+claims. Nothing else may edit `web/fixtures/bundle.json`.
+
+```bash
+uv run python scripts/capture_web_fixtures.py
+```
+
+Expect six fixtures and `cloud tokens spent capturing: 0`. Outcomes measured on
+this host: one `local`, three `local_degraded`, two `blocked`.
+
+### Contrast
+
+Measured, not eyeballed, in both themes. Light and dark both checked:
+
+| pair | ratio |
+|---|---|
+| ink on paper | 17.45 |
+| ink on coral | 6.46 |
+| ink on acid | 15.81 |
+| ink on mint | 12.38 |
+| paper on dark panel | 15.38 |
+
+If coral ever carries white text that is 3.05:1 and fails AA - only volt takes
+white, at 4.93:1.
+
+**Muted text must be checked BLENDED at its opacity**, not as a raw colour
+pair. A pair check reads `opacity-55` ink on paper as 17.45:1 and passes it,
+while the rendered pixels are 4.23:1 and fail. Paste this in the console; it
+blends before comparing and reports the worst case on the page:
+
+```js
+const f=c=>c.match(/\d+(\.\d+)?/g).map(Number);
+const L=p=>{const[r,g,b]=p.map(v=>{v/=255;return v<=0.03928?v/12.92:((v+0.055)/1.055)**2.4});
+  return 0.2126*r+0.7152*g+0.0722*b};
+const R=(A,B)=>{const a=L(A),b=L(B),[h,l]=a>b?[a,b]:[b,a];return (h+0.05)/(l+0.05)};
+const bg=f(getComputedStyle(document.body).backgroundColor);let worst=99;
+document.querySelectorAll('*').forEach(el=>{const s=getComputedStyle(el),o=+s.opacity;
+  if(o>=1||o===0||!el.textContent.trim()||el.closest('button:disabled'))return;
+  const c=f(s.color).map((v,i)=>v*o+bg[i]*(1-o));worst=Math.min(worst,R(c,bg))});
+worst.toFixed(2);
+```
+
+Must be at least 4.5. Measured after the fix: 8.56 light, 9.63 dark.
+
+Also confirm zero horizontal overflow at 375px:
+
+```bash
+# in the browser console
+document.documentElement.scrollWidth - document.documentElement.clientWidth
+```
+
+Must be `0`.
+
+
+## Model panel and the capability check
+
+```bash
+uv run hybrid-rag serve
+```
+
+In the console, open **model & hardware**. Expect the profiles, the current
+temperature and context length, and the installed models with real sizes.
+
+The check is the part worth verifying, because it is the one that could quietly
+start guessing. Type a model tag, pick a context, press check. Measured on this
+host:
+
+| model | ctx | verdict |
+|---|---|---|
+| `qwen2.5-coder:3b` | 8192 | FITS, ~4404 MB of 5341 usable |
+| `llama3.2:3b-instruct-q4_K_M` | 32768 | EXCEEDS, over by ~1590 MB |
+| `llama3.1:70b` | any | UNKNOWN - not installed, cannot be measured |
+
+The breakdown must read **weights (measured)** and **kv cache (estimate)** as
+separate lines. If they ever render as one number, the distinction decision 34
+exists to preserve has been lost.
+
+Without an NVIDIA card the verdict must be `unknown` with a message saying the
+GPU could not be queried - never a zero.
+
+### The API directly
+
+```bash
+curl -s http://127.0.0.1:8000/api/models
+curl -s "http://127.0.0.1:8000/api/requirements?model=qwen2.5-coder:3b&num_ctx=8192"
+curl -s -X POST http://127.0.0.1:8000/api/models/params   -H "content-type: application/json" -d '{"temperature":0.7}'
+```
+
+Out-of-range values must return 400 with the range in the message. And every
+mutating route must still refuse a `text/plain` body with 415:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}
+" -X POST   http://127.0.0.1:8000/api/models/select   -H "content-type: text/plain" -d '{"profile":"code"}'
 ```

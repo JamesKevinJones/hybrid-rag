@@ -1,0 +1,311 @@
+@import "tailwindcss";
+
+/*
+  Bind the `dark:` utility variant to the .dark class rather than Tailwind's
+  default prefers-color-scheme query.
+
+  Without this, the theme toggle moves data-theme and .dark while every
+  `dark:` utility keeps following the OS setting. On a machine set to dark,
+  switching to light left dark-mode text over the light paper background at
+  1.14:1 - invisible. The toggle has to be the single authority, and the
+  pre-paint script sets .dark before first paint.
+
+  Carried over from portfolio-website, where this exact bug was found.
+*/
+@custom-variant dark (&:is(.dark *));
+
+/*
+  hybrid-rag console. Neo-brutalism, same hand as portfolio-website and
+  StarMatch: hard 3px ink borders, hard offset shadows, no blur and no
+  gradients on any UI chrome.
+
+  Coral is this project's accent because it is the palette colour nearest the
+  terminal UI's terracotta (#d97757), so the TUI and the web console read as
+  one product rather than two.
+
+  The one patterned surface is the hazard band, reserved for a single job:
+  stating what the system refuses to do. Keeping it rare is what makes it read
+  as a warning label rather than decoration.
+*/
+
+@theme {
+  /* Surfaces */
+  --color-paper: #f4f1ea;
+  --color-paper-dim: #e8e3d7;
+  --color-ink: #0b0b0b;
+  --color-ink-soft: #2e2c28;
+
+  /* Accents - high chroma, used flat and unblended. */
+  --color-acid: #ddf247;
+  --color-volt: #4d5bff;
+  --color-coral: #ff5c4d;
+  --color-mint: #4ee6a8;
+
+  /* Monaspace throughout - Krypton display, Argon body, Neon labels. The
+     fallbacks are monospace too, so a failed font load changes the texture
+     and not the metrics. */
+  --font-display: var(--font-display), ui-monospace, SFMono-Regular, monospace;
+  --font-body: var(--font-body), ui-monospace, SFMono-Regular, monospace;
+  --font-mono: var(--font-mono), ui-monospace, SFMono-Regular, monospace;
+
+  /* The brutalist offset shadow, at three weights */
+  --shadow-brut-sm: 3px 3px 0 0 var(--color-ink);
+  --shadow-brut: 6px 6px 0 0 var(--color-ink);
+  --shadow-brut-lg: 10px 10px 0 0 var(--color-ink);
+
+  --radius-brut: 2px;
+}
+
+@layer base {
+  :root {
+    --bg: var(--color-paper);
+    --fg: var(--color-ink);
+    --panel: #ffffff;
+    --line: var(--color-ink);
+    /* The hazard stripe's light colour. Inverted in dark mode so the band
+       stays a warning rather than turning into black-on-black texture. */
+    --hazard-a: var(--color-ink);
+    --hazard-b: var(--color-acid);
+  }
+
+  /*
+    Dark mode inverts the paper but keeps the borders hard. Brutalism in the
+    dark means bright rules on near-black, not soft grey-on-grey.
+  */
+  :root[data-theme="dark"],
+  html.dark {
+    --bg: #121110;
+    --fg: #f4f1ea;
+    --panel: #1c1a18;
+    --line: #f4f1ea;
+    --hazard-a: #f4f1ea;
+    --hazard-b: var(--color-acid);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121110;
+      --fg: #f4f1ea;
+      --panel: #1c1a18;
+      --line: #f4f1ea;
+      --hazard-a: #f4f1ea;
+      --hazard-b: var(--color-acid);
+    }
+  }
+
+  * {
+    border-color: var(--line);
+  }
+
+  html {
+    /* Bigger baseline. Monaspace runs slightly small at a given px, and this
+       is a console meant to be read at arm's length, not a dense dashboard. */
+    font-size: 17px;
+  }
+
+  @media (max-width: 640px) {
+    html {
+      font-size: 16px;
+    }
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 1rem;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    /*
+      Was 0.95 with a -0.03em track, inherited from a proportional face.
+      Monaspace is monospaced and squarer, so a negative track collides
+      adjacent glyphs, and 0.95 clipped every descender - the `g` in
+      "budgeted" was cut off by the acid highlight behind it, which read as a
+      rendering bug rather than a type choice. 1.12 clears the descender and
+      gives the highlight room to be a band rather than a smear.
+    */
+    letter-spacing: -0.01em;
+    line-height: 1.12;
+    text-wrap: balance;
+  }
+
+  /* Visible, unmissable focus - brutalism has no excuse for poor a11y. */
+  :focus-visible {
+    outline: 3px solid var(--color-volt);
+    outline-offset: 3px;
+  }
+
+  /*
+    ...except on the transcript itself. Chrome makes any scrollable region
+    keyboard-focusable and rings it, which drew a full-height box around the
+    middle of the page the moment you clicked or scrolled in it. The ring is
+    meant to tell you what a keystroke will act on; here the region fills the
+    window and its scrollbar already says so, and the box read as a stray
+    border rather than a focus state.
+
+    Interactive controls inside it keep their ring - this only removes the
+    container's own.
+  */
+  [data-scroll-region]:focus,
+  [data-scroll-region]:focus-visible {
+    outline: none;
+  }
+
+  ::selection {
+    background: var(--color-acid);
+    color: var(--color-ink);
+  }
+}
+
+@layer components {
+  /* The single primitive the whole UI is built from. */
+  .brut {
+    border: 3px solid var(--line);
+    border-radius: var(--radius-brut);
+    background: var(--panel);
+    box-shadow: var(--shadow-brut);
+  }
+
+  .brut-sm {
+    border: 3px solid var(--line);
+    border-radius: var(--radius-brut);
+    background: var(--panel);
+    box-shadow: var(--shadow-brut-sm);
+  }
+
+  /* Flat panel: the border without the shadow, for nested surfaces where a
+     second offset would read as a second layer that is not there. */
+  .brut-flat {
+    border: 3px solid var(--line);
+    border-radius: var(--radius-brut);
+    background: var(--panel);
+  }
+
+  /* Press-down interaction: the shadow collapses into the element. */
+  .brut-press {
+    transition:
+      transform 120ms cubic-bezier(0.2, 0, 0, 1),
+      box-shadow 120ms cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .brut-press:hover:not(:disabled) {
+    transform: translate(-2px, -2px);
+    box-shadow: 8px 8px 0 0 var(--line);
+  }
+
+  .brut-press:active:not(:disabled) {
+    transform: translate(3px, 3px);
+    box-shadow: 1px 1px 0 0 var(--line);
+  }
+
+  .brut-press:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  /*
+    Theme-toggle icons. Both are in the DOM; CSS picks one from the root's
+    theme so the button needs no React state and cannot flash the wrong glyph.
+  */
+  .theme-icon-sun {
+    display: none;
+  }
+  .theme-icon-moon {
+    display: block;
+  }
+
+  :root[data-theme="dark"] .theme-icon-sun,
+  :root.dark .theme-icon-sun {
+    display: block;
+  }
+  :root[data-theme="dark"] .theme-icon-moon,
+  :root.dark .theme-icon-moon {
+    display: none;
+  }
+
+  .label {
+    font-family: var(--font-mono);
+    /* Was 0.6875rem. Legible beats dense; this is chrome someone reads, not
+       a footnote they scan past. */
+    font-size: 0.8125rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  /*
+    Diagonal hazard stripes. The signature device: it marks the one line that
+    states what the system will not do. Used nowhere else - the moment it
+    becomes texture it stops reading as a warning.
+  */
+  .hazard {
+    background-image: repeating-linear-gradient(
+      45deg,
+      var(--hazard-a) 0 10px,
+      var(--hazard-b) 10px 20px
+    );
+  }
+
+  @keyframes hazard-drift {
+    to {
+      background-position: 28.284px 0;
+    }
+  }
+
+  .hazard-live {
+    animation: hazard-drift 1.4s linear infinite;
+  }
+
+  /* Text set over the acid highlight. */
+  .mark {
+    background: var(--color-acid);
+    color: var(--color-ink);
+    /* Vertical padding as well as horizontal: the highlight should sit as a
+       band around the word, not a tight shrink-wrap that clips the descender. */
+    padding: 0.06em 0.16em;
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+
+  /*
+    The stage pulse. Opacity only - no transform, no scale-from-zero. It runs
+    while the pipeline is working and stops the instant the result lands,
+    because it is driven by real stage events rather than a timer.
+  */
+  @keyframes stage-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.35;
+    }
+  }
+
+  .stage-live {
+    animation: stage-pulse 1s ease-in-out infinite;
+  }
+}
+
+/*
+  Every animation here is opt-out.
+*/
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

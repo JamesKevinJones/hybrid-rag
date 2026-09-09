@@ -106,6 +106,74 @@ class Container:
         self.gate.set_slm_model(resolved)
         return resolved
 
+    def set_generation_params(
+        self,
+        *,
+        temperature: float | None = None,
+        num_ctx: int | None = None,
+        keep_alive: int | str | None = None,
+    ) -> dict[str, object]:
+        """Retune the resident generator. Returns the settings now in force.
+
+        `OllamaClient` holds the settings OBJECT and reads these per request, so
+        a change here applies to the next call with no reconstruction.
+
+        Two of these carry consequences worth stating rather than hiding:
+
+        - `temperature` is pinned at 0.0 by default because the audit ledger
+          records it beside the model digest so a decision can be replayed
+          bit-for-bit. Raising it trades that reproducibility for variety, and
+          the ledger will show the temperature that was actually used.
+        - `num_ctx` is the fastest way to leave the VRAM envelope. 4096 on a 3B
+          Q4 costs roughly 0.4 GB of KV cache; the cost scales with the context,
+          and past the envelope Ollama spills into system memory rather than
+          failing, which on a single-channel bus is about 10x slower.
+
+        This mutates process-global settings. Acceptable because the server is
+        single-user and loopback-only; it would be a race behind a shared one.
+        """
+        ollama = self.settings.ollama
+        if temperature is not None:
+            if not 0.0 <= temperature <= 2.0:
+                raise ValueError(f"temperature must be between 0.0 and 2.0, got {temperature}")
+            ollama.temperature = temperature
+        if num_ctx is not None:
+            if not 256 <= num_ctx <= 131_072:
+                raise ValueError(f"num_ctx must be between 256 and 131072, got {num_ctx}")
+            ollama.num_ctx = num_ctx
+        if keep_alive is not None:
+            ollama.keep_alive = keep_alive
+        return {
+            "temperature": ollama.temperature,
+            "num_ctx": ollama.num_ctx,
+            "keep_alive": ollama.keep_alive,
+            "seed": ollama.seed,
+        }
+
+    def add_generator_profile(self, name: str, model: str) -> str:
+        """Register a new generator profile. Returns the model it maps to.
+
+        `switch_generator` deliberately refuses any model that is not already a
+        profile, which protects the measured co-residency envelope from a name
+        typed at a prompt. This is the sanctioned way to widen that set, so it
+        validates the shape of the name and that the model exists - and then
+        allows it, reporting the fit rather than refusing on size.
+
+        Refusing a large model outright would be the wrong call: whether a
+        spill into system memory is acceptable is the operator's judgement, not
+        this function's. What is not acceptable is making that trade silently,
+        so callers get the assessment alongside.
+        """
+        cleaned = name.strip().lower()
+        if not cleaned or not cleaned.replace("_", "").replace("-", "").isalnum():
+            raise ValueError(
+                f"profile name {name!r} must be alphanumeric, with - or _ separators"
+            )
+        if not model.strip():
+            raise ValueError("a profile needs a model id")
+        self.settings.ollama.generator_profiles[cleaned] = model.strip()
+        return model.strip()
+
     async def aclose(self) -> None:
         await self.rag.aclose()
         await self.ollama.aclose()

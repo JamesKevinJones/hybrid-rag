@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from pydantic import ValidationError
 from rich.console import Console
 from rich.table import Table
 
@@ -30,6 +31,7 @@ from hybrid_rag.scaffolder import (
     write_scaffold,
 )
 from hybrid_rag.ui.tui import run_tui
+from hybrid_rag.web.app import build_app
 
 app = typer.Typer(
     add_completion=False,
@@ -403,6 +405,78 @@ def promote(
             raise typer.Exit(2)
 
     asyncio.run(_run())
+
+
+@app.command()
+def serve(
+    host: Annotated[str | None, typer.Option(help="Bind address. Loopback unless forced.")] = None,
+    port: Annotated[int | None, typer.Option(help="Port to listen on.")] = None,
+    public: Annotated[
+        bool,
+        typer.Option(
+            "--public",
+            help="Permit a non-loopback bind. This server is UNAUTHENTICATED.",
+        ),
+    ] = False,
+) -> None:
+    """Serve the web UI and its API on localhost.
+
+    Holds one container for the process lifetime, which means it holds the
+    embedded Qdrant lock: the TUI and every other `hybrid-rag` command will
+    refuse to start while this runs, and vice versa. That is embedded mode
+    working as designed - see decision 33.
+    """
+    import uvicorn
+
+    settings = get_settings()
+    try:
+        web = settings.web.model_copy(
+            update={
+                "host": host or settings.web.host,
+                "port": port or settings.web.port,
+                "allow_public_bind": public or settings.web.allow_public_bind,
+            }
+        )
+        # model_copy skips validation, so re-validate deliberately rather than
+        # letting --host 0.0.0.0 slip past the loopback guard.
+        web = type(web).model_validate(web.model_dump())
+    except ValidationError as exc:
+        console.print(f"[red]{exc.errors()[0]['msg']}[/]")
+        raise typer.Exit(2) from exc
+
+    settings.web = web
+
+    if not web.static_dir.is_dir():
+        console.print(
+            f"[yellow]no compiled UI at {web.static_dir}[/] - serving the API only. "
+            "Build it with `cd web; npm run build`, or run `npm run dev` on :3000."
+        )
+
+    try:
+        application = build_app(settings)
+    except RuntimeError as exc:
+        # Embedded Qdrant takes an EXCLUSIVE, non-blocking lock. Anything else
+        # holding it - the TUI, an MCP server, another `hybrid-rag` - makes
+        # this fail instantly, and a traceback buries the one useful sentence.
+        if "already accessed by another instance" in str(exc):
+            console.print(
+                f"[red]the vector index at {settings.vector.persist_dir} is already open.[/]"
+            )
+            console.print(
+                "[dim]Embedded Qdrant is single-process. Close the TUI, any MCP "
+                "server and any other hybrid-rag command, then try again.[/]"
+            )
+            raise typer.Exit(2) from exc
+        raise
+
+    if web.allow_public_bind and web.host not in {"127.0.0.1", "localhost", "::1"}:
+        console.print(
+            f"[yellow]binding {web.host} - this server has NO authentication and can "
+            "read the governance ledger. Put something in front of it.[/]"
+        )
+
+    console.print(f"hybrid-rag on [bold]http://{web.host}:{web.port}[/]")
+    uvicorn.run(application, host=web.host, port=web.port, log_level="warning")
 
 
 @app.command("verify-ledger")

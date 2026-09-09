@@ -29,10 +29,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-import subprocess
 import time
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -52,6 +50,7 @@ from hybrid_rag.agents.orchestrator import ExecutionResult, Outcome, Stage
 from hybrid_rag.config import Settings
 from hybrid_rag.container import Container, build_container
 from hybrid_rag.governance.audit import PIIStatus
+from hybrid_rag.ui.residency import ResidentModel, probe_residency, residency_for
 
 __all__ = ["HybridRagTui", "run_tui"]
 
@@ -127,78 +126,6 @@ def supports_unicode(console: Console) -> bool:
     except (UnicodeEncodeError, LookupError):
         return False
     return True
-
-
-# --------------------------------------------------------------------------
-# Live hardware probe
-# --------------------------------------------------------------------------
-
-
-@dataclass(frozen=True, slots=True)
-class ResidentModel:
-    """One row of `ollama ps`."""
-
-    name: str
-    size: str
-    processor: str
-
-
-def probe_residency(
-    binary: str = "ollama", *, timeout_s: float = 5.0
-) -> list[ResidentModel] | None:
-    """What Ollama currently holds in memory.
-
-    Returns `None` - not an empty list - when the question could not be asked:
-    no binary, no daemon, a timeout, an unrecognised table. "Nothing is
-    resident" and "I could not find out" are different facts, and the HUD
-    prints them differently. Collapsing them is how a status panel starts
-    lying.
-    """
-    try:
-        proc = subprocess.run(  # fixed argv; `binary` comes from settings, not a prompt
-            [binary, "ps"],
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if proc.returncode != 0:
-        return None
-
-    lines = [line for line in proc.stdout.splitlines() if line.strip()]
-    if not lines or not lines[0].upper().startswith("NAME"):
-        return None
-
-    models: list[ResidentModel] = []
-    for line in lines[1:]:
-        # NAME  ID  SIZE  PROCESSOR  CONTEXT  UNTIL - whitespace-aligned, and
-        # BOTH SIZE and PROCESSOR are two tokens ("2.6 GB", "100% GPU"). Taking
-        # one token for the processor silently reports "100%" and loses the
-        # part that says whether it is on the GPU at all, which is the only
-        # part anyone reads this row for.
-        parts = line.split()
-        if len(parts) < 6:
-            continue
-        models.append(
-            ResidentModel(
-                name=parts[0],
-                size=f"{parts[2]} {parts[3]}",
-                processor=f"{parts[4]} {parts[5]}",
-            )
-        )
-    return models
-
-
-def _residency_cell(models: list[ResidentModel] | None, wanted: str) -> tuple[str, str]:
-    """(text, style) describing whether `wanted` is loaded right now."""
-    if models is None:
-        return "residency not measured (ollama ps unavailable)", MUTED
-    for model in models:
-        if model.name == wanted or model.name.split(":")[0] == wanted.split(":")[0]:
-            return f"resident, {model.processor}, {model.size}", OK
-    return "not resident (loads on first query)", MUTED
 
 
 # --------------------------------------------------------------------------
@@ -294,7 +221,8 @@ def render_hud(
     table.add_column()
 
     generator = settings.ollama.generator_model
-    gen_text, gen_style = _residency_cell(residency, generator)
+    gen_text, gen_resident = residency_for(residency, generator)
+    gen_style = OK if gen_resident else MUTED
     table.add_row(
         "Model",
         Text.assemble(

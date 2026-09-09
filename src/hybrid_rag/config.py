@@ -378,6 +378,46 @@ class PromotionSettings(BaseModel):
     ollama_binary: str = "ollama"
 
 
+class WebSettings(BaseModel):
+    """The local web surface. Loopback by default, and hard to un-loopback.
+
+    This server holds a container, which means it can answer questions, read
+    the governance ledger and spend budget. It has no authentication, because
+    on `127.0.0.1` the trust boundary is the machine account - exactly the
+    same boundary the CLI already sits inside.
+
+    Binding it to `0.0.0.0` moves that boundary onto the network and there is
+    no authentication behind it. So the host is validated rather than trusted:
+    a non-loopback value is refused unless `allow_public_bind` is set
+    deliberately, which makes exposing this an explicit act that shows up in a
+    config diff instead of a typo that quietly works.
+    """
+
+    host: str = "127.0.0.1"
+    port: int = 8000
+    # Exact origins, no wildcard. `next dev` serves 3000; the static mount is
+    # served from this server's own origin.
+    cors_origins: list[str] = Field(
+        default_factory=lambda: ["http://localhost:3000", "http://127.0.0.1:8000"]
+    )
+    allow_public_bind: bool = False
+    # Where `serve` looks for the compiled frontend. Absent is a supported
+    # state - the server starts anyway and says how to build it.
+    static_dir: Path = REPO_ROOT / "web" / "out"
+
+    @model_validator(mode="after")
+    def _refuse_public_bind(self) -> WebSettings:
+        if self.allow_public_bind:
+            return self
+        if self.host not in {"127.0.0.1", "localhost", "::1"}:
+            raise ValueError(
+                f"refusing to bind {self.host!r}: this server is unauthenticated and "
+                "can read the governance ledger. Set allow_public_bind=true only if "
+                "you have put something in front of it."
+            )
+        return self
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="HYBRID_RAG_",
@@ -399,6 +439,7 @@ class Settings(BaseSettings):
     distill: DistillSettings = Field(default_factory=DistillSettings)
     eval: EvalSettings = Field(default_factory=EvalSettings)
     promotion: PromotionSettings = Field(default_factory=PromotionSettings)
+    web: WebSettings = Field(default_factory=WebSettings)
 
     def ensure_dirs(self) -> None:
         for p in (

@@ -46,6 +46,13 @@ dependencies = [
   # would stall the container's background tasks.
   "prompt-toolkit>=3.0,<4",
   "fastmcp>=2.0,<3",
+  # Local web surface. Both already arrive transitively through fastmcp -> mcp,
+  # and are declared explicitly anyway: a future fastmcp release could drop
+  # them and take `hybrid-rag serve` down without a line of our code changing.
+  # Starlette rather than FastAPI - FastAPI is NOT installed here, and it would
+  # be a new dependency bought for routing sugar this app does not use.
+  "starlette>=0.37,<2",
+  "uvicorn>=0.30,<1",
 ]
 
 [project.optional-dependencies]

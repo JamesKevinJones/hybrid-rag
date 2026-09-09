@@ -34,7 +34,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from hybrid_rag.config import DistillSettings, Settings
 from hybrid_rag.distill.dataset_formatter import (
@@ -160,10 +160,18 @@ class ExecutionResult(BaseModel):
     quarantined_chunks: int = 0
     distilled: bool = False
 
+    # `computed_field`, not a bare property. A plain `@property` is invisible to
+    # `model_dump()`, so the moment this model is serialised over HTTP the two
+    # most load-bearing facts in it - did this cost money, and where did the
+    # tokens come from - silently disappear. A web client would then have to
+    # re-derive them from the token counts, which is exactly the "compute a
+    # plausible number in the renderer" that rule 14 forbids.
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def spent_cloud_tokens(self) -> bool:
         return (self.cloud_tokens_in + self.cloud_tokens_out) > 0
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def token_source(self) -> TokenSource:
         if self.spent_cloud_tokens:

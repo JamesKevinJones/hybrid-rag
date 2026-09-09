@@ -5,7 +5,7 @@ _Updated 2026-09-06. See 'Where to pick up' at the end._
 ## Where we stopped
 
 Modules 1 through 6 are built, calibrated against external data, and running.
-392 tests, ruff clean, mypy strict clean, tree clean.
+433 tests, ruff clean, mypy strict clean, tree clean.
 
 The system is **air-gapped by default and complete offline**. Level 2 is
 optional wiring, not a dependency.
@@ -246,6 +246,103 @@ and can take a name from a retrieved passage.
   that is not resident and the envelope is already near full. Not fixed, not
   investigated further; noted in docs/VERIFY.md so the next person checks
   `ollama ps` before blaming the query.
+
+## Shipped 2026-09-09 (Module 8: web console)
+
+A neo-brutalist web UI in the same design language as `portfolio-website`, and
+a local server for it. **Two modes from one build** - decision 33.
+
+- **`src/hybrid_rag/web/app.py`** - Starlette, not FastAPI (both starlette and
+  uvicorn already arrived via fastmcp; FastAPI did not and would have been new).
+  Four routes: health, budget, ledger, and an SSE `ask`. Container built in
+  lifespan and closed in a `finally`.
+- **`hybrid-rag serve`** - loopback only, refuses a non-loopback bind unless
+  `allow_public_bind` is set, exact-origin CORS. Mounts the compiled UI if
+  present so daily use is one command; explains how to build it if absent.
+- **`web/`** - Next.js 16 / React 19 / Tailwind v4, `output: "export"`, so one
+  artifact serves both Vercel and the Python static mount. Mode is resolved at
+  RUNTIME from the hostname, so no env var is needed on Vercel.
+- **`scripts/capture_web_fixtures.py`** - the demo is a recording. Six real
+  runs, `cloud tokens spent capturing: 0`.
+
+### Verified live, not assumed
+
+- Full SSE round trip in the browser: three stages in order, then
+  `LOCAL / cloud 0+0 / conf 0.9913 / 41 tok/s / 5343 ms` and a real ledger hash.
+- Demo build: RECORDED badge, hazard disclosure band, a replayed credential
+  refusal reading "rotate it, do not mask it".
+- Contrast measured in BOTH themes: ink on coral 6.46, ink on acid 15.81, ink
+  on mint 12.38, body 17.45 light / 16.72 dark. All clear AA.
+- Zero horizontal overflow at 375px.
+
+### Three bugs found while building it
+
+1. **`@property` does not serialize.** `spent_cloud_tokens`, `token_source`,
+   `messages_remaining`, `tokens_remaining` all vanished from `model_dump()`.
+   Promoted to `@computed_field` with tests.
+2. **Deferred stage events.** `call_soon_threadsafe` put every stage behind the
+   result, so the client got an answer with no stages at all. `put_nowait` is
+   correct because the callback already runs on the loop.
+3. **Llama Guard, twice more** (consistent with decision 31): "email X to Y"
+   denies on S1, and email+card in one prompt denies on S7 while either alone
+   passes. The PII fixture carries one entity as a result.
+
+### Known, not fixed
+
+`tests/unit/test_pii_edge_cases.py::test_a_pathological_private_key_marker_does_not_hang`
+asserts a regex completes in under 250 ms and **flakes under machine load** -
+it took 347 ms with a uvicorn server and a static host running, and 0.18 s
+alone. `pii.py` is unmodified. It is a timing assertion on a shared machine,
+not a regression; worth loosening or marking if it recurs.
+
+## Shipped 2026-09-09 (console rework + model control)
+
+**Design.** Monaspace throughout, self-hosted via `next/font/local` - Krypton
+display, Argon body, Neon labels. Layout is now a chat client: header and
+composer are fixed chrome, transcript scrolls between them, everything centred
+to `max-w-3xl`. The lockup doubles as home. GSAP entrance inside
+`gsap.matchMedia`. Decision 33a.
+
+**Model control and capability check.** `src/hybrid_rag/hardware.py` plus five
+routes: `/api/models`, `/api/models/select|params|profiles`,
+`/api/requirements`. The panel switches profiles, sets temperature and context,
+adds installed models, and answers "will this run here?". Decision 34.
+
+### Four real bugs found by measuring rather than looking
+
+1. **GSAP `from()` captured a mid-tween value as its destination.** The effect
+   re-runs when `mode` resolves from null; the second pass read opacity 0.43 as
+   the target, so the heading sat permanently half-faded - and below AA. Now
+   `fromTo` with explicit end values plus `overwrite: "auto"`.
+2. **Auto-scroll fired on mount**, scrolling the welcome heading up behind the
+   header. Guarded on `turns.length > 0`.
+3. **`opacity-55` on muted text measures 4.23:1** - fails AA under 18.66px, and
+   every HUD label is 11-13px. A raw colour-pair check passes it at 17.45:1;
+   the ratio has to be computed BLENDED at its opacity. Now 0.75 -> 8.56 light,
+   9.63 dark.
+4. **The "box" in the middle of the page** was Chrome's focus ring on the
+   scrollable region, which it makes keyboard-focusable. Removed on the
+   container only; controls inside keep theirs.
+
+### Verified live
+
+Full SSE round trip, both themes measured for contrast, zero horizontal
+overflow at 375px, and the capability check against the real card: RTX 4050,
+6141 MB total, 5341 usable. qwen2.5-coder:3b at 8192 ctx needs ~4404 MB (FITS);
+at 32768 it exceeds by ~1590 MB.
+
+### Worth knowing
+
+- Screenshots of this page in the embedded preview pane are frequently
+  half-painted after the GSAP entrance while the DOM is correct. A scroll nudge
+  forces a repaint. Measure with `getBoundingClientRect()` before believing a
+  blank frame.
+- `data/corpus` is stale - it predates decision 27 and contains no mention of
+  the 0.35 threshold, so the model correctly answers "the context does not say"
+  when asked about it. Re-ingest with `uv run hybrid-rag ingest ./docs`.
+- The demo fixtures were captured BEFORE this rework. They still replay
+  correctly, but re-run `scripts/capture_web_fixtures.py` if the pipeline
+  changes again.
 
 ## Where to pick up
 
