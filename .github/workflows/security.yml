@@ -51,7 +51,17 @@ jobs:
           # than picking up whatever is current — pin to the model you
           # actually want reviewing your diffs, and revisit this when a
           # newer one ships.
-          claude-model: claude-opus-5
+          #
+          # 2026-10-07: claude-opus-5 -> claude-opus-5-5 (current Opus, cheaper).
+          # Checked against the action's source: it sends only model,
+          # max_tokens, messages and system, and keeps only blocks with
+          # `.text`, so Opus 5.5's always-on thinking and its 400s on
+          # disabled thinking / forced tool_choice don't affect it.
+          # Known upstream issue, not fixable here: the action's
+          # validate_api_access() pings the retired claude-3-5-haiku-20241022,
+          # fails, and silently turns off its false-positive filter, so
+          # expect noisier PR comments until Anthropic fixes it.
+          claude-model: claude-opus-5-5
 
   # Not a gate. A visible note that this commit bypassed the CI review, so an
   # empty Actions history is never mistaken for a clean one.
