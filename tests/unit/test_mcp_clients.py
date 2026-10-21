@@ -13,6 +13,7 @@ green check that inspected nothing.
 from __future__ import annotations
 
 import json
+import sys
 
 import pytest
 
@@ -52,6 +53,10 @@ def _failures(report: vmc.Report) -> list[str]:
 # --------------------------------------------------------------------------
 
 
+@pytest.mark.skipif(
+    sys.platform != "win32",
+    reason="the checked-in .vscode/mcp.json targets the Windows venv layout by design",
+)
 def test_the_checked_in_vscode_config_is_usable() -> None:
     report = vmc.Report()
     argv = vmc.check_vscode_config(report)
@@ -103,7 +108,8 @@ def test_src_prefixed_module_path_is_rejected(tmp_path) -> None:
 
 def test_missing_interpreter_is_rejected(tmp_path) -> None:
     broken = json.loads(json.dumps(WORKING))
-    broken["servers"]["hybrid-rag"]["command"] = "${workspaceFolder}/.venv/bin/python"
+    # Missing on every OS: `.venv/bin/python` exists on a POSIX host.
+    broken["servers"]["hybrid-rag"]["command"] = "${workspaceFolder}/.venv/missing/python"
 
     report, argv = _check(tmp_path, broken)
 

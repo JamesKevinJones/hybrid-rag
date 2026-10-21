@@ -1,7 +1,9 @@
 # Verify
 
-Run all four before reporting any change as done. They take about 20 seconds
-together and need no Ollama daemon, no network and no cloud tokens.
+Run all four before reporting any change as done. They need no Ollama daemon,
+no network and no cloud tokens. CI (`.github/workflows/ci.yml`) runs the same
+four on ubuntu for every push to `main` and every PR. Measured 21 Oct 2026:
+pytest about 55 s on the Windows laptop, about 15 s on Linux.
 
 ```bash
 uv sync --extra dev
@@ -10,8 +12,10 @@ uv run mypy
 uv run pytest
 ```
 
-Expected: `All checks passed!`, `Success: no issues found in 28 source files`,
-`433 passed`.
+Expected: `All checks passed!`, `Success: no issues found in 33 source files`,
+`441 passed, 1 skipped` on Windows. Linux skips one more,
+`test_the_checked_in_vscode_config_is_usable`, because `.vscode/mcp.json`
+targets the Windows venv layout.
 
 Note `ruff check src tests` misses `scripts/`. Run `ruff check src tests scripts`
 if you touched anything there - `verify_mcp_clients.py` lives in it and is
@@ -50,19 +54,38 @@ Exit code 2. Add `--direction context` to check retrieved text instead, and
 ## With real local models
 
 ```bash
-uv run hybrid-rag ingest ./data/corpus
-uv run hybrid-rag route "How does the budget veto work?"
+uv run python scripts/fetch_calibration_corpus.py
+uv run hybrid-rag ingest ./data/calibration
+uv run hybrid-rag route "How does the event loop schedule callbacks?"
 uv run hybrid-rag route "purple monkey dishwasher tax code"
 ```
 
 The first should route LOCAL with retrieval confidence near 0.99, the second
-OPUS with confidence 0.000. That gap is the whole point of the calibration
+OPUS with confidence 0.000. Use the external PEP corpus, not this repo's docs:
+`docs/` quotes the gibberish example, so ingesting it makes that query
+answerable (measured: LOCAL at 1.000). That gap is the whole point of the calibration
 work in decision 11 - if it ever collapses back toward 0.03, the cross-encoder
 is not running. Neither call spends cloud tokens: `route` is a dry run that
 reserves and immediately releases.
 
 Note: pass the ingest glob as `--glob='**/*.md'` or omit it. Git Bash expands a
 bare `"**/*.md"` into filenames before typer sees it.
+
+## Calibration
+
+Re-derives the routing threshold. Run it after changing `rerank_model`,
+`embed_model` or the confidence formula. It reads its own collection, so the
+ingest needs the collection name too:
+
+```bash
+uv run python scripts/fetch_calibration_corpus.py
+HYBRID_RAG_VECTOR__COLLECTION=calib_minilm_384 uv run hybrid-rag ingest ./data/calibration
+uv run python scripts/calibrate_thresholds.py
+```
+
+Expected (21 Oct 2026, commit `3d21791`): `corpus: 665 chunks`, answerable
+`min=0.4984 median=0.9413`, unanswerable `max=0.0028 median=0.0000`,
+`clean separation ... width 0.4956`.
 
 ## What is deliberately not covered
 

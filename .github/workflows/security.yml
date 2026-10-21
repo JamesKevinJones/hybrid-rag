@@ -32,9 +32,32 @@ on:
     branches: [main]
 
 jobs:
-  # Fires only on pull_request; see the trigger comment above.
-  security:
+  # Without the CLAUDE_API_KEY secret the review cannot run, and it would fail
+  # every PR with a red X. A job-level `if:` cannot read `secrets`, so this job
+  # turns "is the key set?" into an output. Fork PRs get no secrets either.
+  key-check:
     if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      has-key: ${{ steps.check.outputs.has-key }}
+    steps:
+      - id: check
+        env:
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+        run: |
+          if [ -n "$CLAUDE_API_KEY" ]; then
+            echo "has-key=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-key=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Security review skipped::CLAUDE_API_KEY is not set for this repository, so CI reviewed nothing. Coverage for this PR is whatever the local /security-review command found before the push."
+          fi
+
+  # Fires only on pull_request (key-check does not run on push); see the
+  # trigger comment above. Skipped, not passed, when there is no key: a green
+  # check that scanned nothing would look like coverage.
+  security:
+    needs: key-check
+    if: needs.key-check.outputs.has-key == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,7 +65,10 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 2
 
-      - uses: anthropics/claude-code-security-review@main
+      # Pinned to a commit, not @main: this action runs with a repo token and
+      # an API key, so upstream changes should arrive by an explicit bump.
+      # 0c6a49f = main as of 2026-02-11 (the repo publishes no release tags).
+      - uses: anthropics/claude-code-security-review@0c6a49f1fa56a1d472575da86a94dbc1edb78eda
         with:
           comment-pr: true
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}

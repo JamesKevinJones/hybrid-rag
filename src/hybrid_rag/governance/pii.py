@@ -21,6 +21,7 @@ the ledger - `ScrubResult.reverse_map` is explicitly excluded from dumps.
 from __future__ import annotations
 
 import re
+from bisect import bisect_left
 from collections import defaultdict
 from collections.abc import Sequence
 from typing import Protocol, runtime_checkable
@@ -99,13 +100,8 @@ _PATTERNS: tuple[tuple[str, str, float], ...] = (
     ("SLACK_TOKEN", r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b", 1.0),
     (
         "PRIVATE_KEY",
-        # Bounded body, not `[\s\S]+?`. Unbounded, an unterminated BEGIN marker
-        # makes the engine rescan to end-of-input from every start position -
-        # measured quadratic: 400 markers took 31 ms, 1600 took 416 ms. This
-        # pattern runs over ingested corpus text, which is the least trusted
-        # input in the system. A real PEM body is under 4 KB.
-        r"-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----[\s\S]{1,4000}?-----END "
-        r"(?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----",
+        # Matched by `_private_key_spans`, not by this pattern's finditer: see there.
+        r"-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----",
         1.0,
     ),
     ("JWT", r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b", 0.9),
@@ -132,6 +128,36 @@ _COMPILED: tuple[tuple[str, re.Pattern[str], float], ...] = tuple(
     (name, re.compile(pattern), score) for name, pattern, score in _PATTERNS
 )
 
+# A private key is a BEGIN marker, a 1-4000 char body (a real PEM body is under
+# 4 KB), then an END marker. As one regex the body had to be bounded: unbounded,
+# an unterminated BEGIN rescanned to end-of-input from every start position -
+# measured quadratic, 400 markers 31 ms, 1600 markers 416 ms. Bounded, it was
+# linear but still rescanned the whole 4000-char bound per BEGIN: 86 KB of
+# markers took ~490 ms, on corpus text, the least trusted input in the system.
+# Pairing each BEGIN with the nearest END finds the same spans in one pass.
+_PEM_BEGIN = re.compile(r"(?=(-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----))")
+_PEM_END = re.compile(r"(?=(-----END (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----))")
+_PEM_MAX_BODY = 4000
+
+
+def _private_key_spans(text: str) -> list[tuple[int, int]]:
+    """The spans `BEGIN[\\s\\S]{1,4000}?END` would match, in linear time."""
+    ends = [(m.start(), m.start() + len(m.group(1))) for m in _PEM_END.finditer(text)]
+    if not ends:
+        return []
+    end_starts = [start for start, _ in ends]
+    spans: list[tuple[int, int]] = []
+    cursor = 0
+    for begin in _PEM_BEGIN.finditer(text):
+        if begin.start() < cursor:
+            continue
+        body_start = begin.start() + len(begin.group(1))
+        i = bisect_left(end_starts, body_start + 1)
+        if i < len(ends) and end_starts[i] - body_start <= _PEM_MAX_BODY:
+            spans.append((begin.start(), ends[i][1]))
+            cursor = ends[i][1]
+    return spans
+
 
 def _luhn_valid(digits: str) -> bool:
     """Checksum a candidate card number. Without this, every order id is a false positive."""
@@ -156,14 +182,19 @@ class RegexPIIDetector:
     def detect(self, text: str) -> list[PIIEntity]:
         found: list[PIIEntity] = []
         for entity_type, pattern, score in _COMPILED:
-            for match in pattern.finditer(text):
-                if entity_type == "CREDIT_CARD" and not _luhn_valid(match.group(0)):
+            spans = (
+                _private_key_spans(text)
+                if entity_type == "PRIVATE_KEY"
+                else [m.span() for m in pattern.finditer(text)]
+            )
+            for start, end in spans:
+                if entity_type == "CREDIT_CARD" and not _luhn_valid(text[start:end]):
                     continue
                 found.append(
                     PIIEntity(
                         entity_type=entity_type,
-                        start=match.start(),
-                        end=match.end(),
+                        start=start,
+                        end=end,
                         score=score,
                         detector=self.name,
                     )
