@@ -8,6 +8,7 @@ scrub, which is the worst failure mode a redactor has - it looks like it worked.
 
 from __future__ import annotations
 
+import re
 import time
 
 import pytest
@@ -223,6 +224,54 @@ def test_a_pathological_private_key_marker_does_not_hang() -> None:
     RegexPIIDetector().detect(hostile)
     elapsed_ms = (time.perf_counter() - t0) * 1000
     assert elapsed_ms < 250, f"regex took {elapsed_ms:.0f} ms on 45 KB of adversarial input"
+
+
+def test_private_key_scan_cost_does_not_scale_with_the_body_bound() -> None:
+    """Each unterminated BEGIN used to scan the full 4000-char body bound, so 86 KB
+    of markers cost ~490 ms: linear, but ~150x the cost of every other pattern."""
+    hostile = "-----BEGIN PRIVATE KEY-----" * 3200 + "A" * 2000
+    t0 = time.perf_counter()
+    RegexPIIDetector().detect(hostile)
+    elapsed_ms = (time.perf_counter() - t0) * 1000
+    assert elapsed_ms < 250, f"regex took {elapsed_ms:.0f} ms on 86 KB of adversarial input"
+
+
+# The bounded regex the detector used before the linear-time pairing. It is the
+# oracle: whatever it redacted, the detector must still redact, span for span.
+_BOUNDED_PEM = re.compile(
+    r"-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----[\s\S]{1,4000}?-----END "
+    r"(?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----"
+)
+_PEM_BODY = "\n".join(["MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC7"] * 30)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "cfg:\n-----BEGIN RSA PRIVATE KEY-----\n" + _PEM_BODY + "\n-----END RSA PRIVATE KEY-----\n",
+        ("-----BEGIN PRIVATE KEY-----\n" + _PEM_BODY + "\n-----END PRIVATE KEY-----\n") * 2,
+        # A truncated key followed by a whole one: both fragments must be covered.
+        "-----BEGIN PRIVATE KEY-----\nMIItruncated\n-----BEGIN EC PRIVATE KEY-----\n"
+        + _PEM_BODY + "\n-----END EC PRIVATE KEY-----",
+        "-----BEGIN PRIVATE KEY-----" + "A" * 4000 + "-----END PRIVATE KEY-----",
+        "-----BEGIN PRIVATE KEY-----" + "A" * 4001 + "-----END PRIVATE KEY-----",
+        "-----BEGIN PRIVATE KEY----------END PRIVATE KEY-----",
+        "-----BEGIN PRIVATE KEY-----x-----END PRIVATE KEY-----END PRIVATE KEY-----",
+        "-----BEGIN PRIVATE KEY-----BEGIN PRIVATE KEY-----x-----END OPENSSH PRIVATE KEY-----",
+        "-----END PRIVATE KEY----- before any -----BEGIN PGP PRIVATE KEY----- y",
+        ("-----BEGIN PRIVATE KEY-----" * 200)
+        + "z-----END PRIVATE KEY-----"
+        + ("-----BEGIN PRIVATE KEY-----" * 3),
+    ],
+)
+def test_private_key_spans_match_the_bounded_regex(text: str) -> None:
+    expected = [m.span() for m in _BOUNDED_PEM.finditer(text)]
+    found = [
+        (e.start, e.end)
+        for e in RegexPIIDetector().detect(text)
+        if e.entity_type == "PRIVATE_KEY"
+    ]
+    assert found == expected
 
 
 def test_a_large_clean_document_scrubs_quickly() -> None:
