@@ -1,0 +1,35 @@
+name: CI
+
+# The same four checks as docs/VERIFY.md. No Ollama daemon, no network calls
+# from the suite, no cloud tokens: every backend sits behind a Protocol and
+# the tests inject stubs, so this needs no secrets.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: ruff, mypy, pytest
+    runs-on: ubuntu-latest
+    # The suite takes about a minute. One local run hung near the end, idle on
+    # its own event-loop socket; fail fast instead of burning the 6 h default.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - name: Install
+        run: uv sync --locked --extra dev
+      - name: Lint
+        run: uv run ruff check src tests scripts
+      - name: Type check
+        run: uv run mypy
+      - name: Tests
+        run: uv run pytest
