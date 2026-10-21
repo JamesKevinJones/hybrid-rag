@@ -143,7 +143,7 @@ uv sync --extra dev
 uv run pytest
 ```
 
-442 tests, no Ollama daemon, no index, no network — every backend sits behind a Protocol and the tests inject stubs. One needs a live Ollama and skips without it. CI runs these plus `ruff` and `mypy --strict` on every push to `main` and every PR.
+442 tests, no Ollama daemon, no index, no network — every backend sits behind a Protocol and the tests inject stubs. One needs the optional `governance` extra (Presidio) and skips without it. CI runs these plus `ruff` and `mypy --strict` on every push to `main` and every PR.
 
 To watch the router decide on real data you need [Ollama](https://ollama.com) and one 45 MB model:
 
