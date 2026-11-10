@@ -68,7 +68,9 @@ async def main() -> int:
         indexed = await container.rag.count()
         if not indexed:
             print("No calibration index. Run scripts/fetch_calibration_corpus.py, then ingest:")
-            print("  uv run hybrid-rag ingest ./data/calibration")
+            collection = settings.vector.collection
+            print(f"  HYBRID_RAG_VECTOR__COLLECTION={collection} "
+                  "uv run hybrid-rag ingest ./data/calibration")
             return 1
         await container.rag.query("warmup")
 

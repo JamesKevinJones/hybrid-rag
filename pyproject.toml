@@ -125,6 +125,7 @@ plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = [
+  "anthropic.*",
   "flashrank.*",
   "qdrant_client.*",
   "chromadb.*",
